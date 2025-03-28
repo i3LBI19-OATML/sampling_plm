@@ -211,7 +211,7 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
                                       indel_mode=False,
                                       past_key_values=past_key_values
                                       )
-    print("Single scores computed")
+    # print("Single scores computed")
     scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
   elif model_type == 'RITA':
     model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer)
@@ -336,9 +336,8 @@ def get_attention_mutants(DMS, AMSmodel, focus='highest', top_n = 5, AA_vocab=AA
       attention_weights = AMSmodel(input_ids=inputs, return_dict=True, output_attentions=True).attentions
       attention_scores = attention_weights[-1][0].mean(dim=(0, 1))[1:-1].tolist()
     elif model_type == 'RITA':
-      # TODO: Implement RITA attention score
       attention_weights = AMSmodel(input_ids=inputs).hidden_states
-      attention_scores = attention_weights[-1][0].mean(dim=(0))[1:-1].tolist()
+      attention_scores = attention_weights[-1].mean(dim=1)[:-1].tolist()
     else: 
       raise ValueError('Invalid model type')
     # print(f'as: {attention_scores}')
