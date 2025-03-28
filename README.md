@@ -63,6 +63,7 @@ EVmutation/plmc/bin/plmc -o [model output name].model_params \
 ```
 *MSA files downloadable from [here](https://github.com/OATML-Markslab/Tranception/tree/main?tab=readme-ov-file#multiple-sequence-alignments-msas)
 
+<!--
 ## Reference
 If you use this repository in your work, please cite the following paper:
 ```
@@ -84,3 +85,4 @@ url={https://openreview.net/forum?id=JPOW9FToYX}
 ## Links
 - NeurIPS 2023 GenBio proceedings: https://openreview.net/pdf?id=JPOW9FToYX
 - NeurIPS 2023 MLSB proceedings: https://www.mlsb.io/papers_2023/Sampling_Protein_Language_Models_for_Functional_Protein_Design.pdf
+-->
