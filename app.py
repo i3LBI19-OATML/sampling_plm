@@ -196,7 +196,7 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
   model = Tranception_model
   if torch.cuda.is_available():
     model.cuda()
-    print("Inference will take place on GPU")
+    # print("Inference will take place on GPU")
   else:
     print("Inference will take place on CPU")
   model.config.tokenizer = tokenizer
