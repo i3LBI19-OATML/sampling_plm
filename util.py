@@ -3,7 +3,7 @@ import pandas as pd
 
 def save_as_fasta(df: pd.DataFrame, fasta_output):
     # Open the output file for writing
-    with open(fasta_output, 'w') as f:
+    with open(fasta_output, 'a') as f:
         # Iterate over the rows of the DataFrame
         for index, row in df.iterrows():
             # Write the header line (starting with ">")

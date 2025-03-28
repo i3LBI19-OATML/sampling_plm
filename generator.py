@@ -1,6 +1,6 @@
 import app
 import argparse
-from transformers import PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoTokenizer
 from tranception import config, model_pytorch
 import tranception
 import pandas as pd
@@ -18,6 +18,7 @@ parser.add_argument('--mutation_start', type=int, default=None, help='Mutation s
 parser.add_argument('--mutation_end', type=int, default=None, help='Mutation end position')
 parser.add_argument('--model', type=str, choices=['small', 'medium', 'large'], help='Tranception model size')
 parser.add_argument('--Tmodel', type=str, help='Tranception model path')
+parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA'], required=True, help='Model name')
 parser.add_argument('--use_scoring_mirror', action='store_true', help='Whether to score the sequence from both ends')
 parser.add_argument('--batch', type=int, default=20, help='Batch size for scoring')
 parser.add_argument('--max_pos', type=int, default=50, help='Maximum number of positions per heatmap')
@@ -36,6 +37,7 @@ parser.add_argument('--max_length', type=int, help='Number of search levels in b
 parser.add_argument('--evolution_cycles', type=int, required=True, help='Number of evolution cycles per generated sequence')
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
 parser.add_argument('--save_df', action='store_true', help='Whether to save the dataframe')
+parser.add_argument('--verbose', action='store_true', help='Whether to print verbose output')
 args = parser.parse_args()
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
@@ -46,21 +48,30 @@ tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(
                                                 cls_token="[CLS]",
                                                 mask_token="[MASK]"
                                             )
-assert args.model or args.Tmodel, "Either model size or model path must be specified"
-model_type = args.model.capitalize() if args.model else None
-# Load model
-try:
-    model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
-    print("Model successfully loaded from local")
-except:
-    print("Model not found locally, downloading from HuggingFace")
-    if model_type=="Small":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
-    elif model_type=="Medium":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
-    elif model_type=="Large":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
 
+# Load model
+model_name = args.model_name
+if model_name == 'Tranception':
+    assert args.model or args.Tmodel, "Either model size or model path must be specified"
+    model_type = args.model.capitalize() if args.model else None
+    try:
+        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
+        print("Model successfully loaded from local")
+    except:
+        print("Model not found locally, downloading from HuggingFace")
+        if model_type=="Small":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
+        elif model_type=="Medium":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
+        elif model_type=="Large":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
+elif model_name == 'RITA':
+    assert args.Tmodel, "Model path must be specified"
+    tokenizer = AutoTokenizer.from_pretrained(args.Tmodel)
+    model = AutoModelForCausalLM.from_pretrained(args.Tmodel, local_files_only=True, trust_remote_code=True)
+else:
+    raise ValueError(f"Model {model_name} not supported")
+    
 mutation_start = args.mutation_start
 mutation_end = args.mutation_end
 sequence_num = args.sequence_num
@@ -97,8 +108,9 @@ while len(generated_sequence) < sequence_num:
     mutation_history = []
 
     while iteration < evolution_cycles:
-        print(f"Sequence {len(generated_sequence) + 1} of {sequence_num}, Iteration {iteration + 1} of {evolution_cycles}")
-        print("=========================================")
+        if args.verbose:
+            print(f"Sequence {len(generated_sequence) + 1} of {sequence_num}, Iteration {iteration + 1} of {evolution_cycles}")
+            print("=========================================")
 
         if args.sampling_method == 'mcts':
             mutation, past_key_values = MCTS.UCT_search(seq, max_length=args.max_length, extra=1, tokenizer=tokenizer, AA_vocab=AA_vocab, Tmodel=model, past_key_values=past_key_values, filter=args.filter, ev_model=ev_model, intermediate_sampling_threshold=args.intermediate_threshold)
@@ -115,7 +127,8 @@ while len(generated_sequence) < sequence_num:
                                                                                         AA_vocab=AA_vocab, 
                                                                                         tokenizer=tokenizer,
                                                                                         with_heatmap=args.with_heatmap,
-                                                                                        past_key_values=past_key_values)
+                                                                                        past_key_values=past_key_values,
+                                                                                        model_type=model_name)
 
             # Save heatmap
             if args.with_heatmap and args.save_scores:
@@ -152,16 +165,17 @@ while len(generated_sequence) < sequence_num:
                 mutation = top_k_sampling(scores, k=1, sampler=final_sampler)
             else:
                 raise ValueError(f"Sampling strategy {sampling_strat} not supported")
-            print(f"Using {sampling_strat} sampling strategy with threshold {sampling_threshold}")
+            print(f"Using {sampling_strat} sampling strategy with threshold {sampling_threshold}") if args.verbose else None
 
         # 3. Get Mutated Sequence
         mutated_sequence = app.get_mutated_protein(seq, mutation)
         mutation_history += [mutation]
 
-        print("Original Sequence: ", seq)
-        print("Mutation: ", mutation)
-        print("Mutated Sequence: ", mutated_sequence)
-        print("=========================================")
+        if args.verbose:
+            print("Original Sequence: ", seq)
+            print("Mutation: ", mutation)
+            print("Mutated Sequence: ", mutated_sequence)
+            print("=========================================")
 
         seq = mutated_sequence
 
@@ -171,7 +185,7 @@ while len(generated_sequence) < sequence_num:
     sequence_iteration.append(iteration)
     samplings.append(sampling_strat)
     samplingtheshold.append(sampling_threshold) 
-    seq_name = 'Tranception_{}_{}x_{}'.format(sequence_id, iteration, len(generated_sequence))
+    seq_name = '{}_{}_{}x_{}'.format(model_name, sequence_id, iteration, len(generated_sequence))
     generated_sequence_name.append(seq_name)
     mutants.append('1')
     subsamplings.append('NA')
@@ -179,8 +193,8 @@ while len(generated_sequence) < sequence_num:
     mutation_list.append(';'.join(mutation_history))
     generation_time = time.time() - start_time
     generation_duration.append(generation_time)
-    print(f"Sequence {len(generated_sequence)} of {sequence_num} generated in {generation_time} seconds with {iteration} evolution cycles")
-    print("=========================================")
+    print(f"Sequence {len(generated_sequence)}/{sequence_num}: {generation_time} seconds with {iteration} evolution cycles")
+    print("=========================================") if args.verbose else None
     
 print(f'===========Mutated {len(generated_sequence)} sequences in {sum(generation_duration)} seconds============')
 generated_sequence_df = pd.DataFrame({'name': generated_sequence_name,'sequence': generated_sequence, 'sampling': samplings, 'threshold': samplingtheshold, 'subsampling':subsamplings, 'subthreshold': subsamplingtheshold, 'iterations': sequence_iteration, 'mutants': mutants, 'mutations': mutation_list, 'time': generation_duration})
@@ -188,7 +202,10 @@ generated_sequence_df = pd.DataFrame({'name': generated_sequence_name,'sequence'
 if args.save_df:
     save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "generated_metadata/{}.csv".format(args.output_name))
     os.makedirs(os.path.dirname(os.path.realpath(save_path))) if not os.path.exists(os.path.dirname(os.path.realpath(save_path))) else None
-    generated_sequence_df.to_csv(save_path, index=False)
+    if os.path.exists(save_path):
+        generated_sequence_df.to_csv(save_path, mode='a', header=False, index=False)
+    else:
+        generated_sequence_df.to_csv(save_path, index=False)
     print(f"Generated sequences saved to {save_path}")
 
 save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "generated_sequence/{}.fasta".format(args.output_name))

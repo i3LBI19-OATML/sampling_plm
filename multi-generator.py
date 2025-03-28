@@ -1,6 +1,6 @@
 import app
 import argparse
-from transformers import PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoTokenizer
 from tranception import config, model_pytorch
 import tranception
 import pandas as pd
@@ -19,6 +19,8 @@ parser.add_argument('--mutation_start', type=int, default=None, help='Mutation s
 parser.add_argument('--mutation_end', type=int, default=None, help='Mutation end position')
 parser.add_argument('--model', type=str, choices=['small', 'medium', 'large'], help='Tranception model size')
 parser.add_argument('--Tmodel', type=str, help='Tranception model path')
+# parser.add_argument('--AMSmodel', type=str, help='Tranception model path for Attention-Matrix Sampling')
+parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA'], help='Model name', required=True)
 parser.add_argument('--use_scoring_mirror', action='store_true', help='Whether to score the sequence from both ends')
 parser.add_argument('--batch', type=int, default=20, help='Batch size for scoring')
 parser.add_argument('--max_pos', type=int, default=50, help='Maximum number of positions per heatmap')
@@ -43,30 +45,41 @@ parser.add_argument('--sequence_num', type=int, required=True, help='Number of s
 parser.add_argument('--evolution_cycles', type=int, required=True, help='Number of evolution cycles per generated sequence')
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
 parser.add_argument('--save_df', action='store_true', help='Whether to save the dataframe')
+parser.add_argument('--verbose', action='store_true', help='Verbose mode')
 args = parser.parse_args()
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
-tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(os.path.realpath(__file__)), "tranception/utils/tokenizers/Basic_tokenizer"),
+tranception_tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(os.path.realpath(__file__)), "tranception/utils/tokenizers/Basic_tokenizer"),
                                                 unk_token="[UNK]",
                                                 sep_token="[SEP]",
                                                 pad_token="[PAD]",
                                                 cls_token="[CLS]",
                                                 mask_token="[MASK]"
                                             )
-assert args.model or args.Tmodel, "Either model size or model path must be specified"
-model_type = args.model.capitalize() if args.model else None
+
 # Load model
-try:
-    model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
-    print("Model successfully loaded from local")
-except:
-    print("Model not found locally, downloading from HuggingFace")
-    if model_type=="Small":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
-    elif model_type=="Medium":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
-    elif model_type=="Large":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
+model_name = args.model_name
+if model_name == 'Tranception':
+    assert args.model or args.Tmodel, "Either model size or model path must be specified"
+    model_type = args.model.capitalize() if args.model else None
+    try:
+        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
+        print("Model successfully loaded from local")
+    except:
+        print("Model not found locally, downloading from HuggingFace")
+        if model_type=="Small":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
+        elif model_type=="Medium":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
+        elif model_type=="Large":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
+    tokenizer = tranception_tokenizer
+elif model_name == 'RITA':
+    assert args.Tmodel, "Model path must be specified"
+    tokenizer = AutoTokenizer.from_pretrained(args.Tmodel)
+    model = AutoModelForCausalLM.from_pretrained(args.Tmodel, local_files_only=True, trust_remote_code=True)
+else:
+    raise ValueError(f"Model {model_name} not supported")
 
 
 # example_sequence = {'MDH_A0A075B5H0': 'MTQRKKISLIGAGNIGGTLAHLIAQKELGDVVLFDIVEGMPQGKALDISHSSPIMGSNVKITGTNNYEDIKGSDVVIITAGIPRKPGKSDKEWSRDDLLSVNAKIMKDVAENIKKYCPNAFVIVVTNPLDVMVYVLHKYSGLPHNKVCGMAGVLDSSRFRYFLAEKLNVSPNDVQAMVIGGHGDTMVPLTRYCTVGGIPLTEFIKQGWITQEEIDEIVERTRNAGGEIVNLLKTGSAYFAPAASAIEMAESYLKDKKRILPCSAYLEGQYGVKDLFVGVPVIIGKNGVEKIIELELTEEEQEMFDKSVESVRELVETVKKLNALEHHHHHH',
@@ -123,6 +136,10 @@ if args.use_ams:
     ev_model = CouplingsModel(ev_dir)
     strat = "Attention-Matrix Sampling"
     print("Attention-Matrix Sampling will be used!")
+    # if args.model_name == 'RITA':
+    #     tranception_model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.AMSmodel, local_files_only=True)
+    # else:
+    #     tranception_model = model
 if args.use_rsf:
     ev_dir = os.path.join(f"{args.evmutation_model_dir}")
     assert os.path.exists(ev_dir), f"Model directory {ev_dir} does not exist"
@@ -139,13 +156,14 @@ while len(generated_sequence) < sequence_num:
     mutation_history = []
 
     while iteration < evolution_cycles:
-        print(f"Sequence {len(generated_sequence) + 1} of {sequence_num}, Iteration {iteration + 1} of {evolution_cycles}")
-        print("=========================================")
+        if args.verbose:
+            print(f"Sequence {len(generated_sequence) + 1} of {sequence_num}, Iteration {iteration + 1} of {evolution_cycles}")
+            print("=========================================")
 
         mutation_count = 0
         while mutation_count < args.mutations:
             mutation_count += 1
-            print(f"Mutation {mutation_count} of {args.mutations}")
+            print(f"Mutation {mutation_count} of {args.mutations}") if args.verbose else None
             # First Mutation
             if mutation_count == 1:
                 # 1. Generate and score suggested mutation
@@ -158,7 +176,8 @@ while len(generated_sequence) < sequence_num:
                                                                                             AA_vocab=AA_vocab, 
                                                                                             tokenizer=tokenizer,
                                                                                             with_heatmap=args.with_heatmap,
-                                                                                            past_key_values=past_key_values)
+                                                                                            past_key_values=past_key_values,
+                                                                                            model_type=model_name,)
 
                 # 2. Define intermediate sampling threshold
                 final_sampler = temperature_sampler(args.temperature)
@@ -169,7 +188,7 @@ while len(generated_sequence) < sequence_num:
             if mutation_count > 1 and mutation_count < args.mutations:
                 # 1. Generate extra mutations
                 last_mutation_round_DMS = scores
-                print(f"Generating 1 extra mutations after {len(last_mutation_round_DMS['mutant'][0].split(':'))} rounds to make {mutation_count} rounds in total")
+                print(f"Generating 1 extra mutations after {len(last_mutation_round_DMS['mutant'][0].split(':'))} rounds to make {mutation_count} rounds in total") if args.verbose else None
                 assert len(last_mutation_round_DMS['mutant'][0].split(':')) == mutation_count-1, "Mutation step not consistent with previous mutation round"
                 
                 # 2. Sample from extra mutations
@@ -199,17 +218,17 @@ while len(generated_sequence) < sequence_num:
                     try:
                         extra_mutants = app.stratified_filtering(ev_scored, threshold=intermediate_sampling_threshold, column_name='EVmutation')
                     except:
-                        print("Retrying...")
+                        print("Retrying...") if args.verbose else None
                         ev_scored = app.predict_evmutation(DMS=all_extra_mutants, top_n=len(all_extra_mutants), ev_model=ev_model, return_evscore=True)
                         extra_mutants = app.stratified_filtering(ev_scored, threshold=intermediate_sampling_threshold, column_name='EVmutation')
 
 
                 if args.use_ams:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    att_mutations = app.get_attention_mutants(DMS=mutation, Tranception_model=model, focus='highest', top_n=5) #top_n is the number of attention positions to focus on
+                    att_mutations = app.get_attention_mutants(DMS=mutation, AMSmodel=model, focus='highest', top_n=5, tokenizer=tokenizer, model_type=model_name) #top_n is the number of attention positions to focus on
                     extra_mutants = app.predict_evmutation(DMS=att_mutations, top_n=intermediate_sampling_threshold, ev_model=ev_model)
                 
-                print(f"Using {len(extra_mutants)} variants for scoring")
+                print(f"Using {len(extra_mutants)} variants for scoring") if args.verbose else None
 
                 # 3. Get scores of sampled mutation
                 suggested_mutation, scores, _, past_key_values = app.score_multi_mutations(seq,
@@ -223,7 +242,8 @@ while len(generated_sequence) < sequence_num:
                                                                         AA_vocab=AA_vocab, 
                                                                         tokenizer=tokenizer,
                                                                         Tranception_model=model,
-                                                                        past_key_values=past_key_values)
+                                                                        past_key_values=past_key_values,
+                                                                        model_type=model_name,)
 
                 # 4. Define intermediate sampling threshold
                 final_sampler = temperature_sampler(args.temperature)
@@ -234,7 +254,7 @@ while len(generated_sequence) < sequence_num:
             if mutation_count == args.mutations:
                 # 1. Generate extra mutations
                 last_mutation_round_DMS = scores
-                print(f"Generating 1 extra mutations after {len(last_mutation_round_DMS['mutant'][0].split(':'))} rounds to make {mutation_count} rounds in total")
+                print(f"Generating 1 extra mutations after {len(last_mutation_round_DMS['mutant'][0].split(':'))} rounds to make {mutation_count} rounds in total") if args.verbose else None
                 assert len(last_mutation_round_DMS['mutant'][0].split(':')) == mutation_count-1, "Mutation step not consistent with previous mutation round"
                 # 2. Sample from extra mutations
                 if args.use_qff:
@@ -269,10 +289,10 @@ while len(generated_sequence) < sequence_num:
 
                 if args.use_ams:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    att_mutations = app.get_attention_mutants(DMS=mutation, Tranception_model=model, focus='highest', top_n=5) #top_n is the number of attention positions to focus on
+                    att_mutations = app.get_attention_mutants(DMS=mutation, AMSmodel=model, focus='highest', top_n=5, tokenizer=tokenizer, model_type=model_name) #top_n is the number of attention positions to focus on
                     extra_mutants = app.predict_evmutation(DMS=att_mutations, top_n=intermediate_sampling_threshold, ev_model=ev_model)
                 
-                print(f"Using {len(extra_mutants)} variants for scoring")
+                print(f"Using {len(extra_mutants)} variants for scoring") if args.verbose else None
 
                 # 3. Get scores of sampled mutation
                 suggested_mutation, scores, _, past_key_values = app.score_multi_mutations(seq,
@@ -286,7 +306,8 @@ while len(generated_sequence) < sequence_num:
                                                                         AA_vocab=AA_vocab, 
                                                                         tokenizer=tokenizer,
                                                                         Tranception_model=model,
-                                                                        past_key_values=past_key_values)
+                                                                        past_key_values=past_key_values,
+                                                                        model_type=model_name,)
 
                 # 4. Final Sampling mutation from suggested mutation scores
                 final_sampler = temperature_sampler(args.temperature)
@@ -309,16 +330,16 @@ while len(generated_sequence) < sequence_num:
                     mutation = top_k_sampling(scores, k=1, sampler=final_sampler)
                 else:
                     raise ValueError(f"Sampling strategy {sampling_strat} not supported")
-                print(f"Using {sampling_strat} as final sampling strategy with threshold {sampling_threshold}")
+                print(f"Using {sampling_strat} as final sampling strategy with threshold {sampling_threshold}") if args.verbose else None
 
         # Get Mutated Sequence
         mutated_sequence = app.get_mutated_protein(seq, mutation)
         mutation_history += [mutation]
-
-        print("Original Sequence: ", seq)
-        print("Mutation: ", mutation)
-        print("Mutated Sequence: ", mutated_sequence)
-        print("=========================================")
+        if args.verbose:
+            print("Original Sequence: ", seq)
+            print("Mutation: ", mutation)
+            print("Mutated Sequence: ", mutated_sequence)
+            print("=========================================")
 
         seq = mutated_sequence
 
@@ -338,13 +359,13 @@ while len(generated_sequence) < sequence_num:
         subsamplings.append('RSF')
     subsamplingthreshold.append(intermediate_sampling_threshold)
     mutants.append(mutation_count)
-    seq_name = f'Tranception_{sequence_id}_{iteration}x_{len(generated_sequence)}'
+    seq_name = f'{model_name}_{sequence_id}_{iteration}x_{len(generated_sequence)}'
     generated_sequence_name.append(seq_name)
     mutation_list.append(';'.join(mutation_history))
     generation_time = time.time() - start_time
     generation_duration.append(generation_time)
-    print(f"Sequence {len(generated_sequence)} of {sequence_num} generated in {generation_time} seconds using {strat} on {mutation_count} multi-mutants and {iteration} evolution cycles")
-    print("=========================================")
+    print(f"Sequence {len(generated_sequence)}/{sequence_num}: {generation_time} seconds using {strat} on {mutation_count} multi-mutants and {iteration} evolution cycles")
+    print("=========================================") if args.verbose else None
     
 print(f'===========Mutated {len(generated_sequence)} sequences in {sum(generation_duration)} seconds============')
 generated_sequence_df = pd.DataFrame({'name': generated_sequence_name,'sequence': generated_sequence, 'sampling': samplings, 'threshold': samplingthreshold, 'subsampling':subsamplings, 'subthreshold': subsamplingthreshold, 'iterations': sequence_iteration, 'mutants': mutants, 'mutations': mutation_list, 'time': generation_duration})
@@ -352,7 +373,10 @@ generated_sequence_df = pd.DataFrame({'name': generated_sequence_name,'sequence'
 if args.save_df:
     save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "generated_metadata/{}.csv".format(args.output_name))
     os.makedirs(os.path.dirname(os.path.realpath(save_path))) if not os.path.exists(os.path.dirname(os.path.realpath(save_path))) else None
-    generated_sequence_df.to_csv(save_path, index=False)
+    if os.path.exists(save_path):
+        generated_sequence_df.to_csv(save_path, mode='a', header=False, index=False)
+    else:
+        generated_sequence_df.to_csv(save_path, index=False)
     print(f"Generated sequences saved to {save_path}")
 
 save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "generated_sequence/{}.fasta".format(args.output_name))

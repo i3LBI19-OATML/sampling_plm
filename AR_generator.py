@@ -1,6 +1,6 @@
 import app
 import argparse
-from transformers import PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, AutoTokenizer, AutoModelForCausalLM
 from tranception import config, model_pytorch
 import tranception
 import pandas as pd
@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--sequence', type=str, help='Sequence to do mutation or DE')
 parser.add_argument('--model', type=str, choices=['small', 'medium', 'large'], help='Tranception model size')
 parser.add_argument('--Tmodel', type=str, help='Tranception model path')
+parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA'], required=True, help='Model name')
 parser.add_argument('--use_scoring_mirror', action='store_true', help='Whether to score the sequence from both ends')
 parser.add_argument('--batch', type=int, default=20, help='Batch size for scoring')
 parser.add_argument('--max_pos', type=int, default=50, help='Maximum number of positions per heatmap')
@@ -48,21 +49,29 @@ tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(
                                                 cls_token="[CLS]",
                                                 mask_token="[MASK]"
                                             )
-assert args.model or args.Tmodel, "Either model size or model path must be specified"
-model_type = args.model.capitalize() if args.model else None
+
 # Load model
-try:
-    model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
-    # print(f'model A: {model}')
-    print("Model successfully loaded from local")
-except:
-    print("Model not found locally, downloading from HuggingFace")
-    if model_type=="Small":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
-    elif model_type=="Medium":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
-    elif model_type=="Large":
-        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
+model_name = args.model_name
+if model_name == 'Tranception':
+    assert args.model or args.Tmodel, "Either model size or model path must be specified"
+    model_type = args.model.capitalize() if args.model else None
+    try:
+        model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path=args.Tmodel, local_files_only=True)
+        print("Model successfully loaded from local")
+    except:
+        print("Model not found locally, downloading from HuggingFace")
+        if model_type=="Small":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Small")
+        elif model_type=="Medium":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Medium")
+        elif model_type=="Large":
+            model = tranception.model_pytorch.TranceptionLMHeadModel.from_pretrained(pretrained_model_name_or_path="PascalNotin/Tranception_Large")
+elif model_name == 'RITA':
+    assert args.Tmodel, "Model path must be specified"
+    tokenizer = AutoTokenizer.from_pretrained(args.Tmodel)
+    model = AutoModelForCausalLM.from_pretrained(args.Tmodel, local_files_only=True, trust_remote_code=True)
+else:
+    raise ValueError(f"Model {model_name} not supported")
 
 if args.sampling_method == 'beam_search' or args.sampling_method == 'mcts':
     assert args.max_length is not None, "Maximum length must be specified for beam_search or MCTS sampling method"
@@ -128,7 +137,8 @@ while len(generated_sequence) < sequence_num:
                                                         AR_mode=True,
                                                         Tranception_model=model,
                                                         past_key_values=past_key_values,
-                                                        verbose=args.verbose)
+                                                        verbose=args.verbose,
+                                                        model_type=model_name)
 
             # Save scores
             if args.save_scores:
@@ -186,7 +196,7 @@ while len(generated_sequence) < sequence_num:
     sequence_iteration.append(iteration)
     samplings.append(sampling_strat)
     samplingtheshold.append(sampling_threshold) 
-    seq_name = 'ARTranception_{}AA_{}'.format(iteration+1, len(generated_sequence))
+    seq_name = 'AR{}_{}AA_{}'.format(model_name, iteration+1, len(generated_sequence))
     generated_sequence_name.append(seq_name)
     mutants.append('1')
     subsamplings.append('NA')
@@ -205,7 +215,10 @@ generated_sequence_df = pd.DataFrame({'name': generated_sequence_name,'sequence'
 if args.save_df:
     save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "ARgenerated_metadata/{}.csv".format(args.output_name))
     os.makedirs(os.path.dirname(os.path.realpath(save_path))) if not os.path.exists(os.path.dirname(os.path.realpath(save_path))) else None
-    generated_sequence_df.to_csv(save_path, index=False)
+    if os.path.exists(save_path):
+        generated_sequence_df.to_csv(save_path, mode='a', header=False, index=False)
+    else:
+        generated_sequence_df.to_csv(save_path, index=False)
     print(f"Generated sequences saved to {save_path}")
 
 save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "ARgenerated_sequence/{}.fasta".format(args.output_name))

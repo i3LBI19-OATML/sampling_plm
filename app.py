@@ -19,6 +19,7 @@ from scoring_metrics.util import identify_mutation, extract_mutations
 from EVmutation.model import CouplingsModel
 from EVmutation.tools import predict_mutation_table
 from sampling import top_k_sampling
+from RITA import compute_fitness
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
 tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(os.path.realpath(__file__)), "tranception/utils/tokenizers/Basic_tokenizer"),
@@ -174,20 +175,20 @@ def get_mutated_protein(sequence,mutant):
   mutated_sequence = list(sequence)
   multi_mutant=True if len(mutant.split(':'))>1 else False
   if multi_mutant:
-    print("multi mutant detected")
+    # print("multi mutant detected")
     assert check_valid_mutant(sequence,mutant, multi_mutant=True), "The mutant is not valid"
     for m in mutant.split(':'):
       from_AA, position, to_AA = m[0], int(m[1:-1]), m[-1]
       mutated_sequence[position-1]=to_AA
     return ''.join(mutated_sequence)
   else:
-    print("single mutant detected")
+    # print("single mutant detected")
     assert check_valid_mutant(sequence,mutant), "The mutant is not valid"
     from_AA, position, to_AA = mutant[0], int(mutant[1:-1]), mutant[-1]
     mutated_sequence[position-1]=to_AA
   return ''.join(mutated_sequence)
 
-def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=True, past_key_values=None):
+def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=True, past_key_values=None, model_type='Tranception'):
   if mutation_range_start is None: mutation_range_start=1
   if mutation_range_end is None: mutation_range_end=len(sequence)
   assert len(sequence) > 0, "no sequence entered"
@@ -200,17 +201,24 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
     print("Inference will take place on CPU")
   model.config.tokenizer = tokenizer
   all_single_mutants = create_all_single_mutants(sequence,AA_vocab,mutation_range_start,mutation_range_end)
-  print("Single variants generated")
-  scores, past_key_values = model.score_mutants(DMS_data=all_single_mutants, 
-                                    target_seq=sequence, 
-                                    scoring_mirror=scoring_mirror, 
-                                    batch_size_inference=batch_size_inference,  
-                                    num_workers=num_workers, 
-                                    indel_mode=False,
-                                    past_key_values=past_key_values
-                                    )
-  print("Single scores computed")
-  scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
+  # print("Single variants generated")
+  if model_type == 'Tranception':
+    scores, past_key_values = model.score_mutants(DMS_data=all_single_mutants, 
+                                      target_seq=sequence, 
+                                      scoring_mirror=scoring_mirror, 
+                                      batch_size_inference=batch_size_inference,  
+                                      num_workers=num_workers, 
+                                      indel_mode=False,
+                                      past_key_values=past_key_values
+                                      )
+    print("Single scores computed")
+    scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
+  elif model_type == 'RITA':
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer)
+    scores = pd.concat([all_single_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
+    past_key_values = None
+  else:
+    raise ValueError('Invalid model type')  
   scores["position"]=scores["mutant"].map(lambda x: int(x[1:-1]))
   scores["target_AA"] = scores["mutant"].map(lambda x: x[-1])
   score_heatmaps = []
@@ -224,9 +232,10 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
       score_heatmaps.append(create_scoring_matrix_visual(scores,sequence,image_index,window_start,window_end,AA_vocab))
       window_start += max_number_positions_per_heatmap
       window_end = min(mutation_range_end,window_start+max_number_positions_per_heatmap-1)
-  return score_heatmaps, suggest_mutations(scores), scores, all_single_mutants, past_key_values
+  # return score_heatmaps, suggest_mutations(scores), scores, all_single_mutants, past_key_values
+  return score_heatmaps, None, scores, all_single_mutants, past_key_values
 
-def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, AR_mode=False, past_key_values=None, verbose=0):
+def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, AR_mode=False, past_key_values=None, verbose=0, model_type='Tranception'):
   if sequence is not None:
     if mutation_range_start is None: mutation_range_start=1
     if mutation_range_end is None: mutation_range_end=len(sequence)
@@ -240,21 +249,30 @@ def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_
     print("Inference will take place on GPU") if verbose == 1 else None
   else:
     print("Inference will take place on CPU") if verbose == 1 else None
-  scores, past_key_values = model.score_mutants(DMS_data=extra_mutants, 
-                                    target_seq=sequence, 
-                                    scoring_mirror=scoring_mirror, 
-                                    batch_size_inference=batch_size_inference,  
-                                    num_workers=num_workers, 
-                                    indel_mode=False,
-                                    past_key_values=past_key_values,
-                                    verbose=verbose
-                                    )
-  print("Scoring done") if verbose == 1 else None
-  scores = pd.merge(scores,extra_mutants,on="mutated_sequence",how="left")
+  if model_type == 'Tranception':
+    scores, past_key_values = model.score_mutants(DMS_data=extra_mutants, 
+                                      target_seq=sequence, 
+                                      scoring_mirror=scoring_mirror, 
+                                      batch_size_inference=batch_size_inference,  
+                                      num_workers=num_workers, 
+                                      indel_mode=False,
+                                      past_key_values=past_key_values,
+                                      verbose=verbose
+                                      )
+    print("Scoring done") if verbose == 1 else None
+    scores = pd.merge(scores,extra_mutants,on="mutated_sequence",how="left")
+  elif model_type == 'RITA':
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer)
+    scores = pd.concat([extra_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
+    past_key_values = None
+  else:
+    raise ValueError('Invalid model type')
+  
   if AR_mode:
     return scores, extra_mutants, past_key_values
   else:
-    return suggest_mutations(scores, multi=True), scores, extra_mutants, past_key_values
+    # return suggest_mutations(scores, multi=True), scores, extra_mutants, past_key_values
+    return None, scores, extra_mutants, past_key_values
 
 def extract_sequence(example):
   label, taxon, sequence = example
@@ -275,14 +293,14 @@ def predict_evmutation(DMS, top_n, ev_model, return_evscore=False):
   # c = CouplingsModel(model_params)
   c = ev_model
   start_predict = time.time()
-  print("===Predicting EVmutation===")
+  # print("===Predicting EVmutation===")
   DMS['mutant'] = DMS['mutant'].str.replace(':', ',')
   # print(f'ev predict table: {DMS}')
   DMS = predict_mutation_table(c, DMS, output_column="EVmutation")
   DMS = DMS.sort_values(by = 'EVmutation', ascending = False, ignore_index = True)
   # print(f'ev result table: {DMS}')
-  print("===Predicting EVmutation Done===")
-  print(f"Evmutation prediction time: {time.time() - start_predict}")
+  # print("===Predicting EVmutation Done===")
+  # print(f"Evmutation prediction time: {time.time() - start_predict}")
   DMS['mutant'] = DMS['mutant'].str.replace(',', ':')
   if return_evscore:
     return DMS[['mutated_sequence', 'mutant', 'EVmutation']].head(top_n)
@@ -305,7 +323,7 @@ def get_all_possible_mutations_at_pos(sequence: str, position: int, or_mutant=No
     else:
       return pd.DataFrame(mutations)
 
-def get_attention_mutants(DMS, Tranception_model, focus='highest', top_n = 5, AA_vocab=AA_vocab, tokenizer=tokenizer):
+def get_attention_mutants(DMS, AMSmodel, focus='highest', top_n = 5, AA_vocab=AA_vocab, tokenizer=tokenizer, model_type='Tranception'):
   os.environ["TOKENIZERS_PARALLELISM"] = "false"
   new_mutations = []
   for idx, row in tqdm.tqdm(DMS.iterrows(), total=len(DMS), desc=f'Getting attention mutants'):
@@ -314,9 +332,17 @@ def get_attention_mutants(DMS, Tranception_model, focus='highest', top_n = 5, AA
 
     # Get attention scores
     inputs = torch.tensor([tokenizer.encode(sequence)]).to("cuda")
-    attention_weights = Tranception_model(input_ids=inputs, return_dict=True, output_attentions=True).attentions
+    if model_type == 'Tranception':
+      attention_weights = AMSmodel(input_ids=inputs, return_dict=True, output_attentions=True).attentions
+      attention_scores = attention_weights[-1][0].mean(dim=(0, 1))[1:-1].tolist()
+    elif model_type == 'RITA':
+      # TODO: Implement RITA attention score
+      attention_weights = AMSmodel(input_ids=inputs).hidden_states
+      attention_scores = attention_weights[-1][0].mean(dim=(0))[1:-1].tolist()
+    else: 
+      raise ValueError('Invalid model type')
     # print(f'as: {attention_scores}')
-    attention_scores = attention_weights[-1][0].mean(dim=(0, 1))[1:-1].tolist()
+    
 
     if focus == 'highest':
       ind = np.argpartition(attention_scores, -top_n)[-top_n:]
@@ -390,7 +416,7 @@ def generate_1extra_mutation(row, AA_vocab=AA_vocab, mutation_range_start=None, 
     return new_variants
 
 def apply_gen_1extra(DMS):
-  print(f'Creating 1 extra mutation')
+  # print(f'Creating 1 extra mutation')
   data = DMS.apply(generate_1extra_mutation, axis=1)
   # Apply function to each element of the Series
   df = data.apply(list_of_dicts_to_df)
