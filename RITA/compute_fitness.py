@@ -10,9 +10,10 @@ import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss
 
-def calc_fitness(model, prots, tokenizer, device='cuda:0', model_context_len=1023):
+def calc_fitness(model, prots, tokenizer, device='cuda:0', model_type='RITA'):
     loss_list = []
     loss_fn = CrossEntropyLoss()
+    model_context_len = 512 if model_type == 'ProtXLNet' else 1023
     with torch.no_grad():
         for prot in tqdm.tqdm(prots, position=0, leave=True):
             loss_val = 0
@@ -30,11 +31,21 @@ def calc_fitness(model, prots, tokenizer, device='cuda:0', model_context_len=102
             
             for chunk in sequence_chunks:
                 for p in [chunk, chunk[::-1]]:
-                    ids = torch.tensor([tokenizer.encode(p)]).to(device)
-                    input_ids = ids[:, :-1]
-                    targets   = ids[:, 1:]
-                    
-                    logits=model(input_ids).logits
+                    if model_type == 'RITA':
+                        ids = torch.tensor([tokenizer.encode(p)]).to(device)
+                        input_ids = ids[:, :-1]
+                        targets   = ids[:, 1:]
+                        
+                        logits=model(input_ids).logits
+                    elif model_type == 'ProtXLNet':
+                        ids = tokenizer.batch_encode_plus([p], add_special_tokens=True, pad_to_max_length=False)
+                        input_ids = torch.tensor(ids['input_ids']).to(device)
+                        attention_mask = torch.tensor(ids['attention_mask']).to(device)
+                        targets = input_ids.clone()
+                        targets[targets == tokenizer.pad_token_id] = -100
+                        
+                        logits = model(input_ids=input_ids,attention_mask=attention_mask,mems=None).logits
+
                     loss = loss_fn(target=targets.view(-1), input=logits.view(-1,logits.size(-1)))
                     loss_val += -loss.item()
                 

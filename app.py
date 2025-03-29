@@ -213,8 +213,8 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
                                       )
     # print("Single scores computed")
     scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
-  elif model_type == 'RITA':
-    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer)
+  elif model_type == 'RITA' or model_type == 'ProtXLNet':
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
     scores = pd.concat([all_single_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
     past_key_values = None
   else:
@@ -261,8 +261,8 @@ def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_
                                       )
     print("Scoring done") if verbose == 1 else None
     scores = pd.merge(scores,extra_mutants,on="mutated_sequence",how="left")
-  elif model_type == 'RITA':
-    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer)
+  elif model_type == 'RITA' or model_type == 'ProtXLNet':
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
     scores = pd.concat([extra_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
     past_key_values = None
   else:
@@ -338,6 +338,11 @@ def get_attention_mutants(DMS, AMSmodel, focus='highest', top_n = 5, AA_vocab=AA
     elif model_type == 'RITA':
       attention_weights = AMSmodel(input_ids=inputs).hidden_states
       attention_scores = attention_weights[-1].mean(dim=1)[:-1].tolist()
+    elif model_type == 'ProtXLNet':
+      inputs = tokenizer.batch_encode_plus([sequence], add_special_tokens=True, pad_to_max_length=False)
+      input_ids, attention_mask = torch.tensor(inputs['input_ids']).to("cuda"), torch.tensor(inputs['attention_mask']).to("cuda")
+      attention_weights = AMSmodel(input_ids=input_ids, attention_mask=attention_mask, mems=None, return_dict=True, output_attentions=True).attentions
+      attention_scores = attention_weights[-1][0].mean(dim=(0, 1))[1:-1].tolist()
     else: 
       raise ValueError('Invalid model type')
     # print(f'as: {attention_scores}')

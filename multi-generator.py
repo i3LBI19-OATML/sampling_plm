@@ -1,6 +1,6 @@
 import app
 import argparse
-from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoTokenizer
+from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoTokenizer, XLNetLMHeadModel, XLNetTokenizer
 from tranception import config, model_pytorch
 import tranception
 import pandas as pd
@@ -11,6 +11,7 @@ from sampling import top_k_sampling, temperature_sampler, top_p_sampling, typica
 from proteinbert.model_generation import InputEncoder
 import time
 from EVmutation.model import CouplingsModel
+from app import process_prompt_protxlnet
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--sequence', type=str, help='Sequence for mutation', required=True)
@@ -20,7 +21,7 @@ parser.add_argument('--mutation_end', type=int, default=None, help='Mutation end
 parser.add_argument('--model', type=str, choices=['small', 'medium', 'large'], help='Tranception model size')
 parser.add_argument('--Tmodel', type=str, help='Tranception model path')
 # parser.add_argument('--AMSmodel', type=str, help='Tranception model path for Attention-Matrix Sampling')
-parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA'], help='Model name', required=True)
+parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA', 'ProtXLNet'], help='Model name', required=True)
 parser.add_argument('--use_scoring_mirror', action='store_true', help='Whether to score the sequence from both ends')
 parser.add_argument('--batch', type=int, default=20, help='Batch size for scoring')
 parser.add_argument('--max_pos', type=int, default=50, help='Maximum number of positions per heatmap')
@@ -78,6 +79,9 @@ elif model_name == 'RITA':
     assert args.Tmodel, "Model path must be specified"
     tokenizer = AutoTokenizer.from_pretrained(args.Tmodel)
     model = AutoModelForCausalLM.from_pretrained(args.Tmodel, local_files_only=True, trust_remote_code=True)
+elif model_name == 'ProtXLNet':
+    tokenizer = XLNetTokenizer.from_pretrained(args.Tmodel)
+    model = XLNetLMHeadModel.from_pretrained(args.Tmodel, mem_len=512)
 else:
     raise ValueError(f"Model {model_name} not supported")
 
@@ -150,7 +154,7 @@ if args.use_rsf:
 while len(generated_sequence) < sequence_num:
 
     iteration = 0
-    seq = args.sequence
+    seq = args.sequence if model_name != 'ProtXLNet' else process_prompt_protxlnet(args.sequence)
     sequence_id = args.seq_id
     start_time = time.time()
     mutation_history = []

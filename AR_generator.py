@@ -1,6 +1,6 @@
 import app
 import argparse
-from transformers import PreTrainedTokenizerFast, AutoTokenizer, AutoModelForCausalLM
+from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoTokenizer, XLNetLMHeadModel, XLNetTokenizer
 from tranception import config, model_pytorch
 import tranception
 import pandas as pd
@@ -12,13 +12,14 @@ import AR_MCTS
 from EVmutation.model import CouplingsModel
 from tqdm.auto import tqdm
 import sys
+from app import process_prompt_protxlnet
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--sequence', type=str, help='Sequence to do mutation or DE')
 parser.add_argument('--model', type=str, choices=['small', 'medium', 'large'], help='Tranception model size')
 parser.add_argument('--Tmodel', type=str, help='Tranception model path')
-parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA'], required=True, help='Model name')
+parser.add_argument('--model_name', type=str, choices=['Tranception', 'RITA', 'ProtXLNet'], help='Model name', required=True)
 parser.add_argument('--use_scoring_mirror', action='store_true', help='Whether to score the sequence from both ends')
 parser.add_argument('--batch', type=int, default=20, help='Batch size for scoring')
 parser.add_argument('--max_pos', type=int, default=50, help='Maximum number of positions per heatmap')
@@ -70,6 +71,9 @@ elif model_name == 'RITA':
     assert args.Tmodel, "Model path must be specified"
     tokenizer = AutoTokenizer.from_pretrained(args.Tmodel)
     model = AutoModelForCausalLM.from_pretrained(args.Tmodel, local_files_only=True, trust_remote_code=True)
+elif model_name == 'ProtXLNet':
+    tokenizer = XLNetTokenizer.from_pretrained(args.Tmodel)
+    model = XLNetLMHeadModel.from_pretrained(args.Tmodel, mem_len=512)
 else:
     raise ValueError(f"Model {model_name} not supported")
 
@@ -100,7 +104,7 @@ pbar1 = tqdm(total=sequence_num, desc="Generating", position=0, leave=True)
 while len(generated_sequence) < sequence_num:
 
     if not args.sequence: seq = random.choice(AA_vocab)
-    else: seq = args.sequence.upper()
+    else: seq = args.sequence.upper() if model_name != 'ProtXLNet' else process_prompt_protxlnet(args.sequence).upper()
     sequence_length = len(seq)
     start_time = time.time()
     mutation_history = []
