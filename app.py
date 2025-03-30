@@ -22,6 +22,7 @@ from sampling import top_k_sampling
 from RITA import compute_fitness
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
+# Tranception tokenizer
 tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(os.path.realpath(__file__)), "tranception/utils/tokenizers/Basic_tokenizer"),
                                                 unk_token="[UNK]",
                                                 sep_token="[SEP]",
