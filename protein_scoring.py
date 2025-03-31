@@ -130,32 +130,43 @@ with tempfile.TemporaryDirectory() as output_dir:
   n = 400  # default value for quick analysis; replace with the number of sequences you want
   sequences = []
 
-  with open(raw_reference_seqs_file,"w") as fh:
-    for reference_fasta in reference_files:
-      for idx, (name, seq) in enumerate(zip(*parse_fasta(reference_fasta, return_names=True, clean=None, full_name=True))):
-        name = f"{name}_{idx}"
-        print(f">{name}\n{seq}", file=fh)
+  for idf, reference_fasta in enumerate(reference_files):
+    # idf to alphabet
+    did = chr(65 + idf)
 
-  with open(full_reference_seqs_file,"w") as fh:
-    for reference_fasta in reference_files:
-      for idx, (name, seq) in enumerate(zip(*parse_fasta(reference_fasta, return_names=True, clean="unalign"))):
-        name = f"{name}_{idx}"
-        print(f">{name}\n{seq}", file=fh)
-        sequences.append((name, seq)) # if len(seq) == len(args.orig_seq) else None
+    # Parse once for raw sequences
+    parsed = list(zip(*parse_fasta(reference_fasta, return_names=True, clean=None, full_name=True)))
+    raw_lines = [f">{did}{idx}_{name}\n{seq}\n" for idx, (name, seq) in enumerate(parsed)]
 
+    # Parse once for cleaned sequences
+    parsed_clean = list(zip(*parse_fasta(reference_fasta, return_names=True, clean="unalign")))
+    full_lines = [f">{did}{idx}_{name}\n{seq}\n" for idx, (name, seq) in enumerate(parsed_clean)]
+
+    # Collect sequences for further processing
+    sequences.extend((f"{did}{idx}_{name}", seq) for idx, (name, seq) in enumerate(parsed_clean))
+
+  # Write raw and full reference sequences
+  with open(raw_reference_seqs_file, "w") as fh:
+      fh.writelines(raw_lines)
+
+  with open(full_reference_seqs_file, "w") as fh:
+      fh.writelines(full_lines)
+
+  # Random sampling and writing selected sequences
   sample_size = min(n, len(sequences))
   selected_sequences = random.sample(sequences, sample_size)
   print(f"Selected {sample_size} sequences from {len(sequences)} sequences")
-  with open(reference_seqs_file,"w") as fh:
-      for idx, (name, seq) in enumerate(selected_sequences):
-        name = f"{name}_{idx}"
-        print(f">{name}\n{seq}", file=fh)
+
+  with open(reference_seqs_file, "w") as fh:
+      fh.writelines(f">{name}_{idx}\n{seq}\n" for idx, (name, seq) in enumerate(selected_sequences))
 
   # Target sequences
   with open(target_seqs_file,"w") as fh:
-    for target_fasta in target_files:
+    for idf, target_fasta in enumerate(target_files):
+      did = chr(65 + idf)
+      # generate unique names for each fasta file
       for idx, (name, seq) in enumerate(zip(*parse_fasta(target_fasta, return_names=True, clean="unalign"))):
-        name = f"{name}_{idx}"
+        name = f"{did}{idx}_{name}"
         print(f">{name}\n{seq}", file=fh)
 
   alignment_time = time.time()
@@ -170,7 +181,7 @@ with tempfile.TemporaryDirectory() as output_dir:
   print(f"############ ALIGNMENT-BASED METRICS DONE! ({time.time() - alignment_time}s) ############")
 
   if args.use_evmutation:
-    ab_metrics.EVmutation(target_files=target_files, orig_seq=args.orig_seq.upper(), results=results, model_params=args.model_params)
+    ab_metrics.EVmutation(target_files=[target_seqs_file], orig_seq=args.orig_seq.upper(), results=results, model_params=args.model_params)
 
   # Single sequence metrics
   # ESM-1v, ESM-1v-mask6, CARP-640m-logp, Repeat-1, Repeat-2, Repeat-3, Repeat-4, Tranception
