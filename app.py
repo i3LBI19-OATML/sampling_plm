@@ -21,6 +21,7 @@ from EVmutation.tools import predict_mutation_table
 from sampling import top_k_sampling
 from RITA import compute_fitness
 
+# Amino Acid Vocabulary
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
 # Tranception tokenizer
 tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(os.path.realpath(__file__)), "tranception/utils/tokenizers/Basic_tokenizer"),
