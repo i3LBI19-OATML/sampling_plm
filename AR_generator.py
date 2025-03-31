@@ -104,7 +104,7 @@ pbar1 = tqdm(total=sequence_num, desc="Generating", position=0, leave=True)
 while len(generated_sequence) < sequence_num:
 
     if not args.sequence: seq = random.choice(AA_vocab)
-    else: seq = args.sequence.upper() if model_name != 'ProtXLNet' else process_prompt_protxlnet(args.sequence).upper()
+    else: seq = args.sequence.upper()
     sequence_length = len(seq)
     start_time = time.time()
     mutation_history = []

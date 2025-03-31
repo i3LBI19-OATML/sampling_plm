@@ -106,7 +106,7 @@ if args.sampling_method == 'beam_search' or args.sampling_method == 'mcts':
 while len(generated_sequence) < sequence_num:
 
     iteration = 0
-    seq = args.sequence if model_name != 'ProtXLNet' else process_prompt_protxlnet(args.sequence)
+    seq = args.sequence
     sequence_id = args.seq_id
     start_time = time.time()
     mutation_history = []

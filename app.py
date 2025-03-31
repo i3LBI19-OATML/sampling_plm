@@ -216,8 +216,11 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
     # print("Single scores computed")
     scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
   elif model_type == 'RITA' or model_type == 'ProtXLNet':
+    all_single_mutants['mutated_sequence'] = all_single_mutants['mutated_sequence'].apply(lambda x: process_prompt_protxlnet(x)) if model_type == 'ProtXLNet' else all_single_mutants['mutated_sequence']
     model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
-    scores = pd.concat([all_single_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
+    all_single_mutants['avg_score'] = model_scores
+    scores = all_single_mutants
+    scores['mutated_sequence'] = scores['mutated_sequence'].apply(lambda x: post_process_protxlnet(x, AA_vocab)) if model_type == 'ProtXLNet' else scores['mutated_sequence']
     past_key_values = None
   else:
     raise ValueError('Invalid model type')  
@@ -264,8 +267,11 @@ def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_
     print("Scoring done") if verbose == 1 else None
     scores = pd.merge(scores,extra_mutants,on="mutated_sequence",how="left")
   elif model_type == 'RITA' or model_type == 'ProtXLNet':
+    extra_mutants['mutated_sequence'] = extra_mutants['mutated_sequence'].apply(lambda x: process_prompt_protxlnet(x)) if model_type == 'ProtXLNet' else extra_mutants['mutated_sequence']
     model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
-    scores = pd.concat([extra_mutants, pd.DataFrame(model_scores, columns=['avg_score'])], axis=1)
+    extra_mutants['avg_score'] = model_scores
+    scores = extra_mutants
+    scores['mutated_sequence'] = scores['mutated_sequence'].apply(lambda x: post_process_protxlnet(x, AA_vocab)) if model_type == 'ProtXLNet' else scores['mutated_sequence']
     past_key_values = None
   else:
     raise ValueError('Invalid model type')
@@ -294,7 +300,7 @@ def predict_evmutation(DMS, top_n, ev_model, return_evscore=False):
   # Load Model
   # c = CouplingsModel(model_params)
   c = ev_model
-  start_predict = time.time()
+  # start_predict = time.time()
   # print("===Predicting EVmutation===")
   DMS['mutant'] = DMS['mutant'].str.replace(':', ',')
   # print(f'ev predict table: {DMS}')
@@ -330,6 +336,7 @@ def get_attention_mutants(DMS, AMSmodel, focus='highest', top_n = 5, AA_vocab=AA
   new_mutations = []
   for idx, row in tqdm.tqdm(DMS.iterrows(), total=len(DMS), desc=f'Getting attention mutants'):
     sequence = row['mutated_sequence']
+    sequence = process_prompt_protxlnet(sequence) if model_type == 'ProtXLNet' else sequence
     mutant = row['mutant']
 
     # Get attention scores
@@ -389,6 +396,14 @@ def process_prompt_protxlnet(s):
   # s = s.replace('?', '[MASK]')
   s = re.sub(r"[UZOB]", "<unk>", s)
   return s
+
+def post_process_protxlnet(s, AA_vocab=AA_vocab):
+  try:
+    cleaned_seq = [id for id in s if id in AA_vocab]
+  except:
+    print(f'Error: {s}')
+  seq = ''.join(cleaned_seq).replace(' ', '').replace("\n", "")
+  return seq
 
 def stratified_filtering(DMS, threshold, column_name='EVmutation'):
   try:
