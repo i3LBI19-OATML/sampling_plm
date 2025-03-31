@@ -217,13 +217,15 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
     scores = pd.merge(scores,all_single_mutants,on="mutated_sequence",how="left")
   elif model_type == 'RITA' or model_type == 'ProtXLNet':
     all_single_mutants['mutated_sequence'] = all_single_mutants['mutated_sequence'].apply(lambda x: process_prompt_protxlnet(x)) if model_type == 'ProtXLNet' else all_single_mutants['mutated_sequence']
-    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(all_single_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type, batch_size=batch_size_inference)
     all_single_mutants['avg_score'] = model_scores
     scores = all_single_mutants
     scores['mutated_sequence'] = scores['mutated_sequence'].apply(lambda x: post_process_protxlnet(x, AA_vocab)) if model_type == 'ProtXLNet' else scores['mutated_sequence']
     past_key_values = None
   else:
     raise ValueError('Invalid model type')  
+
+  scores = scores.reset_index(drop=True)
   scores["position"]=scores["mutant"].map(lambda x: int(x[1:-1]))
   scores["target_AA"] = scores["mutant"].map(lambda x: x[-1])
   score_heatmaps = []
@@ -268,13 +270,14 @@ def score_multi_mutations(sequence:str, extra_mutants:pd.DataFrame, Tranception_
     scores = pd.merge(scores,extra_mutants,on="mutated_sequence",how="left")
   elif model_type == 'RITA' or model_type == 'ProtXLNet':
     extra_mutants['mutated_sequence'] = extra_mutants['mutated_sequence'].apply(lambda x: process_prompt_protxlnet(x)) if model_type == 'ProtXLNet' else extra_mutants['mutated_sequence']
-    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type)
+    model_scores = compute_fitness.calc_fitness(model=model, prots=np.array(extra_mutants['mutated_sequence']), tokenizer=tokenizer, model_type=model_type, batch_size=batch_size_inference)
     extra_mutants['avg_score'] = model_scores
     scores = extra_mutants
     scores['mutated_sequence'] = scores['mutated_sequence'].apply(lambda x: post_process_protxlnet(x, AA_vocab)) if model_type == 'ProtXLNet' else scores['mutated_sequence']
     past_key_values = None
   else:
     raise ValueError('Invalid model type')
+  scores = scores.reset_index(drop=True)
   
   if AR_mode:
     return scores, extra_mutants, past_key_values

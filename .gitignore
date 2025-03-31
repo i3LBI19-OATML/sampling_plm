@@ -3,6 +3,7 @@
 *.pyc
 __pycache__
 src/pgen.egg-info/
+**/*.egg-info/
 */tmp/*.fasta
 
 condaenv.*.txt
@@ -33,3 +34,5 @@ ar_protgen/*
 
 EVmutation/example/*
 scoring_metrics/esmfold.model
+
+road_1000/

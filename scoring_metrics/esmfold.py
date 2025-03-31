@@ -68,13 +68,16 @@ def predict_structure(target_dir, reference_pdb, save_dir=None, copies=1, num_re
   # target_dir = args.target_dir
   fasta_dir = glob(target_dir+"/*.fasta")
   assert len(fasta_dir) > 0, f"No fasta files found in {target_dir}"
+  data_df = pd.DataFrame()
   for fasta_path in fasta_dir:
     batch = fasta_path.split('/')[-3]
     sampling = fasta_path.split('/')[-2]
     print(f'Batch: {batch}/{sampling}')
     name, seq = parse_fasta(fasta_path, return_names=True, clean="unalign")
-    data_df = pd.DataFrame(list(zip(name, seq)), columns = ["name", "seq"])
+    df = pd.DataFrame(list(zip(name, seq)), columns = ["name", "seq"])
+    data_df = pd.concat([data_df, df], ignore_index=True)
     # data_df = data_df.head()
+  print(f'Total sequences: {len(data_df)}')
 
   model = torch.load(f'{model_name}')
   model.eval().cuda().requires_grad_(False)

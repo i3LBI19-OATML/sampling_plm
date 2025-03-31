@@ -132,12 +132,14 @@ with tempfile.TemporaryDirectory() as output_dir:
 
   with open(raw_reference_seqs_file,"w") as fh:
     for reference_fasta in reference_files:
-      for name, seq in zip(*parse_fasta(reference_fasta, return_names=True, clean=None, full_name=True)):
+      for idx, (name, seq) in enumerate(zip(*parse_fasta(reference_fasta, return_names=True, clean=None, full_name=True))):
+        name = f"{name}_{idx}"
         print(f">{name}\n{seq}", file=fh)
 
   with open(full_reference_seqs_file,"w") as fh:
     for reference_fasta in reference_files:
-      for name, seq in zip(*parse_fasta(reference_fasta, return_names=True, clean="unalign")):
+      for idx, (name, seq) in enumerate(zip(*parse_fasta(reference_fasta, return_names=True, clean="unalign"))):
+        name = f"{name}_{idx}"
         print(f">{name}\n{seq}", file=fh)
         sequences.append((name, seq)) # if len(seq) == len(args.orig_seq) else None
 
@@ -145,13 +147,15 @@ with tempfile.TemporaryDirectory() as output_dir:
   selected_sequences = random.sample(sequences, sample_size)
   print(f"Selected {sample_size} sequences from {len(sequences)} sequences")
   with open(reference_seqs_file,"w") as fh:
-      for name, seq in selected_sequences:
-          print(f">{name}\n{seq}", file=fh)
+      for idx, (name, seq) in enumerate(selected_sequences):
+        name = f"{name}_{idx}"
+        print(f">{name}\n{seq}", file=fh)
 
   # Target sequences
   with open(target_seqs_file,"w") as fh:
     for target_fasta in target_files:
-      for name, seq in zip(*parse_fasta(target_fasta, return_names=True, clean="unalign")):
+      for idx, (name, seq) in enumerate(zip(*parse_fasta(target_fasta, return_names=True, clean="unalign"))):
+        name = f"{name}_{idx}"
         print(f">{name}\n{seq}", file=fh)
 
   alignment_time = time.time()
@@ -182,11 +186,11 @@ with tempfile.TemporaryDirectory() as output_dir:
   ss_metrics.ESM_1v(target_seqs_file, results, device, orig_seq=args.orig_seq.upper()) # ProteinGym ESM-1v model
   esm1v_pred = ss_metrics.ESM_1v_unmask(target_seqs_file, results, device, return_pred=True)
   ss_metrics.Progen2(target_seqs_file, results, device)
-  ss_metrics.ESM_1v_mask6(target_files, results, device)
-  ss_metrics.Repeat(target_files, repeat_score, results)
+  ss_metrics.ESM_1v_mask6([target_seqs_file], results, device)
+  ss_metrics.Repeat([target_seqs_file], repeat_score, results)
   if args.use_tranception:
     past_key_values = None
-    past_key_values = ss_metrics.Tranception(target_files=target_files, orig_seq=args.orig_seq.upper(), results=results, device=device, model_type="Large", local_model=os.path.expanduser("~/Tranception_Large"))
+    past_key_values = ss_metrics.Tranception(target_files=[target_seqs_file], orig_seq=args.orig_seq.upper(), results=results, device=device, model_type="Large", local_model=os.path.expanduser("~/Tranception_Large"))
   print(f"############ SINGLE SEQUENCE METRICS DONE! ({time.time() - single_time}s) ############")
 
   # Download results
