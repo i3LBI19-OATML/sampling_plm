@@ -120,7 +120,7 @@ while len(generated_sequence) < sequence_num:
         if args.sampling_method == 'mcts':
             sampling_strat = args.sampling_method
             sampling_threshold = args.max_length
-            mutation, past_key_values = AR_MCTS.UCT_search(seq, max_length=args.max_length, tokenizer=tokenizer, AA_vocab=AA_vocab, extension_factor=AA_extension, Tmodel=model, past_key_values=past_key_values, filter=args.filter, intermediate_sampling_threshold=args.intermediate_threshold, batch=args.batch)
+            mutation, past_key_values = AR_MCTS.UCT_search(seq, max_length=args.max_length, tokenizer=tokenizer, AA_vocab=AA_vocab, extension_factor=AA_extension, Tmodel=model, past_key_values=past_key_values, filter=args.filter, intermediate_sampling_threshold=args.intermediate_threshold, batch=args.batch, model_type=model_name)
             # print("MCTS mutation: ", mutation)
         
         else:
@@ -161,7 +161,7 @@ while len(generated_sequence) < sequence_num:
             elif sampling_strat == 'beam_search':
                 assert args.max_length < seq_length, "Maximum length must be less than the length of the final sequence"
                 # print(f'IST ar_gen 146: {args.intermediate_threshold}')
-                mutation, past_key_values = ARbeam_search(scores, beam_width=int(sampling_threshold), max_length=args.max_length, tokenizer=tokenizer, sampler=final_sampler, Tmodel=model, batch=args.batch, past_key_values=past_key_values, extension_factor=AA_extension, filter=args.filter, IST=args.intermediate_threshold)
+                mutation, past_key_values = ARbeam_search(scores, beam_width=int(sampling_threshold), max_length=args.max_length, tokenizer=tokenizer, sampler=final_sampler, Tmodel=model, batch=args.batch, past_key_values=past_key_values, extension_factor=AA_extension, filter=args.filter, IST=args.intermediate_threshold, model_type=model_name)
             elif sampling_strat == 'top_p':
                 assert float(sampling_threshold) <= 1.0 and float(sampling_threshold) > 0, "Top-p sampling threshold must be between 0 and 1"
                 mutation = ARtop_p_sampling(scores, p=float(sampling_threshold), sampler=final_sampler)

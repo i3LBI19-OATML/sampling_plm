@@ -62,19 +62,19 @@ class UCTNode():
       current = current.parent
     print("========END OF ITERATION========")
 
-def UCT_search(state, max_length, extra, tokenizer, Tmodel, AA_vocab=AA_vocab, past_key_values=None, filter='hpf', ev_model=None, intermediate_sampling_threshold=96):
+def UCT_search(state, max_length, extra, tokenizer, Tmodel, AA_vocab=AA_vocab, past_key_values=None, filter='hpf', ev_model=None, intermediate_sampling_threshold=96, model_type='Tranception'):
   root = UCTNode(state)
   for _ in range(max_length):
     leaf = root.select_leaf()
-    child_priors, value_estimate, past_key_values = Evaluate(leaf.state, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=past_key_values, filter=filter, ev_model=ev_model, IST=intermediate_sampling_threshold)
+    child_priors, value_estimate, past_key_values = Evaluate(leaf.state, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=past_key_values, filter=filter, ev_model=ev_model, IST=intermediate_sampling_threshold, model_type=model_type)
     leaf.expand(child_priors)
     leaf.backup(value_estimate)
     output = max(root.children.items(), key=lambda item: item[1].number_visits)
   return output[1].move, past_key_values
 
-def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=None, filter='hpf', ev_model=None, IST=96):
+def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=None, filter='hpf', ev_model=None, IST=96, model_type='Tranception'):
     # df_seq = pd.DataFrame.from_dict({'mutated_sequence': [seq]})
-    score_heatmap, suggested_mutation, results, _, past_key_values = app.score_and_create_matrix_all_singles(seq, Tmodel, None, None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=False, past_key_values=past_key_values)
+    score_heatmap, suggested_mutation, results, _, past_key_values = app.score_and_create_matrix_all_singles(seq, Tmodel, None, None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=False, past_key_values=past_key_values, model_type=model_type)
     mutation_count = 1
     
     # Get top k mutations
@@ -102,7 +102,7 @@ def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_value
       extension = app.predict_evmutation(DMS=att_mutations, top_n=IST, ev_model=ev_model)
 
 
-    prior, _, past_key_values = app.score_multi_mutations(sequence=None, Tranception_model=Tmodel, extra_mutants=extension, mutation_range_start=None, mutation_range_end=None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, AR_mode=True, past_key_values=past_key_values)
+    prior, _, past_key_values = app.score_multi_mutations(sequence=None, Tranception_model=Tmodel, extra_mutants=extension, mutation_range_start=None, mutation_range_end=None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, AR_mode=True, past_key_values=past_key_values, model_type=model_type)
     
     child_priors = prior
     value_estimate = float(results['avg_score'].values[0])

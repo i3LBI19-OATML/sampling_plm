@@ -87,23 +87,6 @@ assert len(reference_files) > 0, f"No reference fasta files found in {reference_
 assert len(target_files) > 0, f"No target fasta files found in {target_dir}"
 assert len(msa_weights_files) > 0, f"No MSA weights files found in {msa_weights_dir}"
 
-structure_time = time.time()
-if args.score_existing_structure:
-  # Structure metrics
-  # ESM-IF, ProteinMPNN, MIF-ST, AlphaFold2 pLDDT, TM-score
-  st_metrics.TM_score(pdb_files, reference_pdb, results)
-  st_metrics.ESM_IF(pdb_files, results)
-  st_metrics.ProteinMPNN(pdb_files, results)
-  st_metrics.MIF_ST(pdb_files, results, device)
-  st_metrics.AlphaFold2_pLDDT(pdb_files, results)
-else:
-  esmfold.predict_structure(target_dir, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
-                    verbose=0, collect_output=True, results=results)
-print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
-
-# Alignment-based metrics
-# ESM-MSA, Identity to closest reference, Subtitution matix (BLOSUM62 or PFASUM15) score mean of mutated positions
-# FID (ESM-1v), EVmutation
 sub_matrix = args.sub_matrix.upper()
 score_mean = args.remove_sub_score_mean
 identity = args.remove_identity
@@ -168,7 +151,25 @@ with tempfile.TemporaryDirectory() as output_dir:
       for idx, (name, seq) in enumerate(zip(*parse_fasta(target_fasta, return_names=True, clean="unalign"))):
         name = f"{did}{idx}_{name}"
         print(f">{name}\n{seq}", file=fh)
+  
+  structure_time = time.time()
+  if args.score_existing_structure:
+    # Structure metrics
+    # ESM-IF, ProteinMPNN, MIF-ST, AlphaFold2 pLDDT, TM-score
+    st_metrics.TM_score(pdb_files, reference_pdb, results)
+    st_metrics.ESM_IF(pdb_files, results)
+    st_metrics.ProteinMPNN(pdb_files, results)
+    st_metrics.MIF_ST(pdb_files, results, device)
+    st_metrics.AlphaFold2_pLDDT(pdb_files, results)
+  else:
+    esm_target = os.path.dirname(target_seqs_file)
+    esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
+                      verbose=0, collect_output=True, results=results)
+  print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
 
+  # Alignment-based metrics
+  # ESM-MSA, Identity to closest reference, Subtitution matix (BLOSUM62 or PFASUM15) score mean of mutated positions
+  # FID (ESM-1v), EVmutation
   alignment_time = time.time()
   ab_metrics.ESM_MSA(target_seqs_file, raw_reference_seqs_file, results, orig_seq=args.orig_seq.upper(), msa_weights=msa_weights_files)
   ab_metrics.substitution_score(target_seqs_file, reference_seqs_file,

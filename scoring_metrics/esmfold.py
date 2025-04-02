@@ -72,7 +72,7 @@ def predict_structure(target_dir, reference_pdb, save_dir=None, copies=1, num_re
   for fasta_path in fasta_dir:
     batch = fasta_path.split('/')[-3]
     sampling = fasta_path.split('/')[-2]
-    print(f'Batch: {batch}/{sampling}')
+    # print(f'Batch: {batch}/{sampling}')
     name, seq = parse_fasta(fasta_path, return_names=True, clean="unalign")
     df = pd.DataFrame(list(zip(name, seq)), columns = ["name", "seq"])
     data_df = pd.concat([data_df, df], ignore_index=True)
