@@ -161,7 +161,7 @@ def check_valid_mutant(sequence,mutant,AA_vocab=AA_vocab, multi_mutant=False):
       else:
       # elif sequence[int(mutant_record[index][1:-1])-1]!=from_AA:
         # check if from_AA is consistent with sequence
-        assert sequence[int(mutant_record[index][1:-1])-1]==from_AA, f"from_AA {from_AA} at {position} is not consistent with AA in sequence {sequence[int(mutant_record[index][1:-1])-1]} at position {int(mutant_record[index][1:-1])}"
+        assert sequence[int(mutant_record[index][1:-1])-1]==from_AA, f"from_AA {from_AA} at {position} is not consistent with AA in sequence {sequence[int(mutant_record[index][1:-1])-1]} at position {int(mutant_record[index][1:-1])}\nMutant Chain: {mutant_record}\nSeq: {sequence}"
 
   else:
     try:
@@ -355,6 +355,7 @@ def get_attention_mutants(DMS, AMSmodel, focus='highest', top_n = 5, AA_vocab=AA
       input_ids, attention_mask = torch.tensor(inputs['input_ids']).to("cuda"), torch.tensor(inputs['attention_mask']).to("cuda")
       attention_weights = AMSmodel(input_ids=input_ids, attention_mask=attention_mask, mems=None, return_dict=True, output_attentions=True).attentions
       attention_scores = attention_weights[-1][0].mean(dim=(0, 1))[1:-1].tolist()
+      sequence = post_process_protxlnet(sequence)
     else: 
       raise ValueError('Invalid model type')
     # print(f'as: {attention_scores}')
