@@ -205,6 +205,9 @@ with tempfile.TemporaryDirectory() as output_dir:
     past_key_values = ss_metrics.Tranception(target_files=[target_seqs_file], orig_seq=args.orig_seq.upper(), results=results, device=device, model_type="Large", local_model=os.path.expanduser("~/Tranception_Large"))
   print(f"############ SINGLE SEQUENCE METRICS DONE! ({time.time() - single_time}s) ############")
 
+  # add sequences to results
+  ss_metrics.add_sequence_to_result(target_seqs_file, results)
+  
   # Download results
   df = pd.DataFrame.from_dict(results, orient="index")
   if not args.skip_FID:
@@ -216,10 +219,14 @@ with tempfile.TemporaryDirectory() as output_dir:
   else:
     fretchet_score = None
 
+  
+
 # # delete temporary files
 # os.remove(reference_seqs_file)
 # os.remove(full_reference_seqs_file)
 # os.remove(target_seqs_file)
+
+
 
 if args.score_existing_structure:
   save_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "{}.csv".format(args.output_name))

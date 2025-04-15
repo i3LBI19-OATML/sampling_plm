@@ -56,7 +56,7 @@ class UCTNode():
       current.number_visits += 1
       current.total_value += value_estimate
       current = current.parent
-    print("========END OF ITERATION========")
+    # print("========END OF ITERATION========")
 
 def UCT_search(state, max_length, tokenizer, Tmodel, AA_vocab=AA_vocab, extension_factor=1, past_key_values=None, filter='hpf', intermediate_sampling_threshold=96, batch=20, model_type='Tranception'):
   root = UCTNode(state)
@@ -79,7 +79,7 @@ def Evaluate(seq, tokenizer, AA_vocab, Tmodel, extension_factor=1, past_key_valu
     extension = app.extend_sequence_by_n(seq, extension_factor, AA_vocab, output_sequence=True)
 
     if filter == 'hpf':
-      print("Filtering MCTS with HPF")
+      # print("Filtering MCTS with HPF")
       trimmed = app.trim_DMS(DMS_data=extension, sampled_mutants=results, mutation_rounds=0)
       IST = min(IST, len(trimmed)) # Required
       extension = trimmed.sample(n=IST)

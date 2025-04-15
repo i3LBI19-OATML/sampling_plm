@@ -171,18 +171,18 @@ def beam_search(scores: pd.DataFrame, beam_width: int, max_length:int, tokenizer
     assert filter in ['hpf', 'qff', 'ams'], "Filter must be one of 'hpf', 'qff', or 'ams'"
     if filter == 'hpf':
       levels = app.apply_gen_1extra(scores)
-      print("Filtering MCTS with HPF")
+      # print("Filtering MCTS with HPF")
       trimmed = app.trim_DMS(DMS_data=levels, sampled_mutants=scores, mutation_rounds=length)
       levels = trimmed.sample(n=IST)
 
     if filter == 'qff':
       levels = app.apply_gen_1extra(scores)
-      print("Filtering MCTS with QFF")
+      # print("Filtering MCTS with QFF")
       assert ev_model is not None, "ev_model must be provided for QFF filter"
       levels = app.predict_evmutation(DMS=levels, top_n=IST, ev_model=ev_model)
 
     if filter == 'ams':
-      print("Filtering MCTS with AMS")
+      # print("Filtering MCTS with AMS")
       assert ev_model is not None, "ev_model must be provided for AMS filter"
       att_mutations = app.get_attention_mutants(DMS=scores, Tranception_model=Tmodel, focus='highest', top_n=5, model_type=model_type) #top_n is the number of attention positions to focus on
       levels = app.predict_evmutation(DMS=att_mutations, top_n=IST, ev_model=ev_model)

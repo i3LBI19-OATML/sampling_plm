@@ -60,7 +60,7 @@ class UCTNode():
       current.number_visits += 1
       current.total_value += value_estimate
       current = current.parent
-    print("========END OF ITERATION========")
+    # print("========END OF ITERATION========")
 
 def UCT_search(state, max_length, extra, tokenizer, Tmodel, AA_vocab=AA_vocab, past_key_values=None, filter='hpf', ev_model=None, intermediate_sampling_threshold=96, model_type='Tranception'):
   root = UCTNode(state)
@@ -84,19 +84,19 @@ def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_value
     # Extend and filter the results
     assert filter in ['hpf', 'qff', 'ams'], "Filter must be one of 'hpf', 'qff', or 'ams'"
     if filter == 'hpf':
-      print("Filtering MCTS with HPF")
+      # print("Filtering MCTS with HPF")
       extension = app.apply_gen_1extra(results)
       trimmed = app.trim_DMS(DMS_data=extension, sampled_mutants=results, mutation_rounds=mutation_count)
       extension = trimmed.sample(n=IST)
 
     if filter == 'qff':
-      print("Filtering MCTS with QFF")
+      # print("Filtering MCTS with QFF")
       extension = app.apply_gen_1extra(results)
       assert ev_model is not None, "ev_model must be provided for QFF filter"
       extension = app.predict_evmutation(DMS=extension, top_n=IST, ev_model=ev_model)
 
     if filter == 'ams':
-      print("Filtering MCTS with AMS")
+      # print("Filtering MCTS with AMS")
       assert ev_model is not None, "ev_model must be provided for AMS filter"
       att_mutations = app.get_attention_mutants(DMS=results, Tranception_model=Tmodel, focus='highest', top_n=5) #top_n is the number of attention positions to focus on
       extension = app.predict_evmutation(DMS=att_mutations, top_n=IST, ev_model=ev_model)

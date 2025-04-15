@@ -9,7 +9,7 @@
 # repeat_3 = True
 # repeat_4 = True
 
-from .util import add_metric, identify_mutation
+from .util import add_metric, identify_mutation, add_sequence
 import tempfile
 import subprocess
 import pandas as pd
@@ -250,3 +250,10 @@ def Tranception(target_files, orig_seq, results, device, model_type="Large", loc
         add_metric(results, row["id"], "Tranception", row["avg_score"])
     del scores
     return past_key_values
+
+def add_sequence_to_result(target_files, results):
+  seq_name, seq = parse_fasta(target_files,return_names=True, clean="unalign")
+  df_target = pd.DataFrame({"id":seq_name, "sequence":seq})
+
+  for i, row in df_target.iterrows():
+    add_sequence(results, row["id"], row["sequence"])

@@ -9,6 +9,11 @@ def add_metric(metrics_dict, protein_name, metric_name, value):
     metrics_dict[protein_name] = dict()
   metrics_dict[protein_name][metric_name] = value
 
+def add_sequence(metrics_dict, protein_name, sequence):
+  if protein_name not in metrics_dict:
+    metrics_dict[protein_name] = dict()
+  metrics_dict[protein_name]['sequence'] = sequence
+
 def get_pdb_sequence(pdb_path):
     with open(pdb_path) as f:
         pdb_file = pdb.PDBFile.read(pdb_path)
