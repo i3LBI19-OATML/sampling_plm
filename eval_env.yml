@@ -47,6 +47,7 @@ dependencies:
   - pytorch-cluster=1.6.1=py38_torch_1.13.0_cu117
   - pytorch-spline-conv=1.2.2=py38_torch_1.13.0_cu117
   - mkl=2024.0
+  - gcc
   - pip:
       - sequence-models==1.7.0
       - -e ./scoring_metrics/protein_gibbs_sampler #pgen
@@ -58,3 +59,6 @@ dependencies:
       - git+https://github.com/NVIDIA/dllogger.git # new
       - git+https://github.com/aqlaboratory/openfold.git@6908936b68ae89f67755240e2f588c09ec31d4c8 #new
       - git+https://github.com/sokrypton/esm.git # new
+      - colabfold[alphafold-minus-jax]@git+https://github.com/sokrypton/ColabFold.git@e14313f08fc41200561763d612f6b3e34a41023e # new
+      - jaxlib==0.4.7+cuda11.cudnn82 jax[cuda11]==0.4.7 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html --no-deps --force-reinstall
+      # - dm-haiku==0.0.10 # for cuda 11.7, need to install separately

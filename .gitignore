@@ -36,3 +36,7 @@ EVmutation/example/*
 scoring_metrics/esmfold.model
 
 road_1000*/
+
+**/alphafold_data
+
+**/ColabFold/**/*.ipynb

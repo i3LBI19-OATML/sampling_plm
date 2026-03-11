@@ -13,6 +13,7 @@ from scoring_metrics import single_sequence_metrics as ss_metrics
 from scoring_metrics import alignment_based_metrics as ab_metrics
 from scoring_metrics import fid_score as fid
 from scoring_metrics import esmfold
+from scoring_metrics import alphafold
 import time
 
 #Reset calculated metrics (creates a new datastructure to store results, clearing any existing results)
@@ -33,7 +34,7 @@ os.makedirs(default_target_dir) if not os.path.exists(default_target_dir) else N
 parser = argparse.ArgumentParser()
 parser.add_argument("--pdb_dir", type=str, default=default_pdb_dir, help="Directory containing pdb files")
 parser.add_argument("--reference_dir", type=str, required=True, help="Directory containing reference fasta files")
-parser.add_argument("--msa_weights_dir", type=str, required=True, help="Directory containing MSA weights files (Obtain from ProteinGym repo)")
+parser.add_argument("--msa_weights_dir", type=str, required=False, help="Directory containing MSA weights files (Obtain from ProteinGym repo)")
 parser.add_argument("--reference_pdb", type=str, required=True, help="Reference pdb file")
 parser.add_argument("--target_dir", type=str, required=True, help="Directory containing target fasta files")
 parser.add_argument("--sub_matrix", type=str, choices=["blosum62", "pfasum15"], default="blosum62", help="Substitution matrix to use for alignment-based metrics")
@@ -52,6 +53,7 @@ parser.add_argument("--skip_FID", action="store_true", help="Whether to not calc
 parser.add_argument("--model_params", type=str, help="Model params to use for EVmutation")
 parser.add_argument("--orig_seq", required=True, type=str, help="Original sequence to use for Tranception or EVmutation")
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
+parser.add_argument('--binder_sequence', type=str, required=False, help='Binder sequence to use for AlphaFold2 complex prediction (if not specified, will predict monomeric structure with ESMFold)')
 args = parser.parse_args()
 
 # Checks
@@ -66,33 +68,33 @@ pdb_dir = os.path.abspath(args.pdb_dir) if args.score_existing_structure else No
 reference_pdb = os.path.abspath(args.reference_pdb)
 reference_dir = os.path.abspath(args.reference_dir)
 target_dir = os.path.abspath(args.target_dir)
-msa_weights_dir = os.path.abspath(args.msa_weights_dir)
+msa_weights_dir = os.path.abspath(args.msa_weights_dir) if args.msa_weights_dir else None
 
 if args.score_existing_structure: assert os.path.exists(pdb_dir), f"PDB directory {pdb_dir} does not exist" 
 assert os.path.isfile(reference_pdb), f"Reference pdb file {reference_pdb} does not exist"
 assert os.path.exists(reference_dir), f"Reference directory {reference_dir} does not exist"
 assert os.path.exists(target_dir), f"Target directory {target_dir} does not exist"
-assert os.path.exists(msa_weights_dir), f"MSA weights directory {msa_weights_dir} does not exist"
+# assert os.path.exists(msa_weights_dir), f"MSA weights directory {msa_weights_dir} does not exist"
 
 # Check that the required files exist
 pdb_files = glob(pdb_dir + "/*.pdb") if args.score_existing_structure else None
 reference_files = glob(reference_dir + "/*.fasta")
 # msat_reference_files = glob(reference_dir + "/*.csv")
 target_files = glob(target_dir + "/*.fasta")
-msa_weights_files = glob(msa_weights_dir + "/*.npy")[0]
+msa_weights_files = glob(msa_weights_dir + "/*.npy")[0] if args.msa_weights_dir else None
 
 if args.score_existing_structure: assert len(pdb_files) > 0, f"No pdb files found in {pdb_dir}"
 assert len(reference_files) > 0, f"No reference fasta files found in {reference_dir}"
 # assert len(msat_reference_files) > 0, f"No reference csv files (for MSAT) found in {reference_dir}"
 assert len(target_files) > 0, f"No target fasta files found in {target_dir}"
-assert len(msa_weights_files) > 0, f"No MSA weights files found in {msa_weights_dir}"
+# assert len(msa_weights_files) > 0, f"No MSA weights files found in {msa_weights_dir}"
 
 sub_matrix = args.sub_matrix.upper()
 score_mean = args.remove_sub_score_mean
 identity = args.remove_identity
 sub_gap_open = args.sub_gap_open
 sub_gap_extend = args.sub_gap_extend
-mask_distance = round(len(args.orig_seq)/len(args.orig_seq)*0.15) # mask distance is 15% of the length of the original sequence
+# mask_distance = round(len(args.orig_seq)/len(args.orig_seq)*0.15) # mask distance is 15% of the length of the original sequence
 
 rand_id = randint(10000, 99999) # Necessary for parallelization
 # print("===========================================")
@@ -162,9 +164,16 @@ with tempfile.TemporaryDirectory() as output_dir:
     st_metrics.MIF_ST(pdb_files, results, device)
     st_metrics.AlphaFold2_pLDDT(pdb_files, results)
   else:
-    esm_target = os.path.dirname(target_seqs_file)
-    esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
-                      verbose=0, collect_output=True, results=results)
+    if args.binder_sequence:
+      AF_target = os.path.dirname(target_seqs_file)
+      AF_binder = args.binder_sequence
+      AF_reference = reference_pdb
+      alphafold.predict_AFstructure(AF_target, AF_reference, binder_sequence=AF_binder, save_dir=None, num_recycles=3, keep_pdb=False, 
+                        verbose=0, results=results)
+    else:
+      esm_target = os.path.dirname(target_seqs_file)
+      esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
+                        verbose=0, collect_output=True, results=results)
   print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
 
   # Alignment-based metrics
