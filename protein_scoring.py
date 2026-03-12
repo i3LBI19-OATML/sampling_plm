@@ -49,6 +49,7 @@ parser.add_argument("--remove_repeat_score_4", action="store_false", help="Wheth
 parser.add_argument("--score_existing_structure", action="store_true", help="Whether to score existing pdb files")
 parser.add_argument("--use_tranception", action="store_true", help="Whether to use Tranception")
 parser.add_argument("--use_evmutation", action="store_true", help="Whether to use EVmutation")
+parser.add_argument("--use_esm_msa", action="store_true", help="Whether to use ESM-MSA")
 parser.add_argument("--skip_FID", action="store_true", help="Whether to not calculate FID")
 parser.add_argument("--model_params", type=str, help="Model params to use for EVmutation")
 parser.add_argument("--orig_seq", required=True, type=str, help="Original sequence to use for Tranception or EVmutation")
@@ -153,6 +154,21 @@ with tempfile.TemporaryDirectory() as output_dir:
       for idx, (name, seq) in enumerate(zip(*parse_fasta(target_fasta, return_names=True, clean="unalign"))):
         name = f"{did}{idx}_{name}"
         print(f">{name}\n{seq}", file=fh)
+
+  # Alignment-based metrics
+  # ESM-MSA, Identity to closest reference, Subtitution matix (BLOSUM62 or PFASUM15) score mean of mutated positions
+  # FID (ESM-1v), EVmutation
+  alignment_time = time.time()
+  if args.use_esm_msa:
+    ab_metrics.ESM_MSA(target_seqs_file, raw_reference_seqs_file, results, orig_seq=args.orig_seq.upper(), msa_weights=msa_weights_files)
+  ab_metrics.substitution_score(target_seqs_file, reference_seqs_file,
+                                substitution_matrix=sub_matrix, 
+                                Substitution_matrix_score_mean_of_mutated_positions=score_mean, 
+                                Identity_to_closest_reference=identity,
+                                results=results,
+                                gap_open=sub_gap_open,
+                                gap_extend=sub_gap_extend,)
+  print(f"############ ALIGNMENT-BASED METRICS DONE! ({time.time() - alignment_time}s) ############")
   
   structure_time = time.time()
   if args.score_existing_structure:
@@ -175,20 +191,6 @@ with tempfile.TemporaryDirectory() as output_dir:
       esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
                         verbose=0, collect_output=True, results=results)
   print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
-
-  # Alignment-based metrics
-  # ESM-MSA, Identity to closest reference, Subtitution matix (BLOSUM62 or PFASUM15) score mean of mutated positions
-  # FID (ESM-1v), EVmutation
-  alignment_time = time.time()
-  ab_metrics.ESM_MSA(target_seqs_file, raw_reference_seqs_file, results, orig_seq=args.orig_seq.upper(), msa_weights=msa_weights_files)
-  ab_metrics.substitution_score(target_seqs_file, reference_seqs_file,
-                                substitution_matrix=sub_matrix, 
-                                Substitution_matrix_score_mean_of_mutated_positions=score_mean, 
-                                Identity_to_closest_reference=identity,
-                                results=results,
-                                gap_open=sub_gap_open,
-                                gap_extend=sub_gap_extend,)
-  print(f"############ ALIGNMENT-BASED METRICS DONE! ({time.time() - alignment_time}s) ############")
 
   if args.use_evmutation:
     ab_metrics.EVmutation(target_files=[target_seqs_file], orig_seq=args.orig_seq.upper(), results=results, model_params=args.model_params)

@@ -50,8 +50,11 @@ def ESM_MSA(target_seqs_file, reference_seqs_file, results, orig_seq, msa_weight
         with tempfile.TemporaryDirectory() as temp_dir:
           df_target.to_csv(os.path.join(temp_dir, "target.csv"), index=False)
           df_target = os.path.join(temp_dir, "target.csv")
-
-          proc = subprocess.run(['python', os.path.join(os.path.dirname(os.path.realpath(__file__)), "ProteinGym/proteingym/baselines/esm/compute_fitness.py"), "--sequence", orig_seq, "--dms-input", df_target, "--dms-output", outfile, "--mutation-col", "mutant", "--model-location", os.path.expanduser("~/esm_msa1b_t12_100M_UR50S.pt"), "--msa-path", reference_seqs_file, "--msa-weights-folder", msa_weights, "--filter-msa", "--overwrite-prior-scores"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          
+          if msa_weights is not None:
+            proc = subprocess.run(['python', os.path.join(os.path.dirname(os.path.realpath(__file__)), "ProteinGym/proteingym/baselines/esm/compute_fitness.py"), "--sequence", orig_seq, "--dms-input", df_target, "--dms-output", outfile, "--mutation-col", "mutant", "--model-location", os.path.expanduser("~/esm_msa1b_t12_100M_UR50S.pt"), "--msa-path", reference_seqs_file, "--msa-weights-folder", msa_weights, "--filter-msa", "--overwrite-prior-scores"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          else:
+            proc = subprocess.run(['python', os.path.join(os.path.dirname(os.path.realpath(__file__)), "ProteinGym/proteingym/baselines/esm/compute_fitness.py"), "--sequence", orig_seq, "--dms-input", df_target, "--dms-output", outfile, "--mutation-col", "mutant", "--model-location", os.path.expanduser("~/esm_msa1b_t12_100M_UR50S.pt"), "--msa-path", reference_seqs_file, "--filter-msa", "--overwrite-prior-scores"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       else:
         outfile = None
 
