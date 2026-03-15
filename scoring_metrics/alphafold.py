@@ -73,7 +73,7 @@ def predict_AFstructure(target_dir, reference_pdb, binder_sequence=None, save_di
         query_sequence = f"{row['seq']}: {binder_sequence}" if binder_sequence is not None else row['seq']
         #@markdown  - Use `:` to specify inter-protein chainbreaks for **modeling complexes** (supports homo- and hetro-oligomers). For example **PI...SK:PI...SK** for a homodimer
         jobname = row['name']
-        jobname = re.sub(r'\W+', '', jobname)[:50]
+        # jobname = re.sub(r'\W+', '', jobname)[:50]
         # number of models to use
         num_relax = 0
         template_mode = "none"
