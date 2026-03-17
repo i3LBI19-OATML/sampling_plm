@@ -7,6 +7,7 @@ import os
 import argparse
 from random import randint
 import tempfile
+import re
 
 from scoring_metrics import structure_metrics as st_metrics
 from scoring_metrics import single_sequence_metrics as ss_metrics
@@ -35,7 +36,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--pdb_dir", type=str, default=default_pdb_dir, help="Directory containing pdb files")
 parser.add_argument("--reference_dir", type=str, required=True, help="Directory containing reference fasta files")
 parser.add_argument("--msa_weights_dir", type=str, required=False, help="Directory containing MSA weights files (Obtain from ProteinGym repo)")
-parser.add_argument("--reference_pdb", type=str, required=True, help="Reference pdb file")
+parser.add_argument("--reference_pdb", type=str, required=False, help="Reference pdb file")
 parser.add_argument("--target_dir", type=str, required=True, help="Directory containing target fasta files")
 parser.add_argument("--sub_matrix", type=str, choices=["blosum62", "pfasum15"], default="blosum62", help="Substitution matrix to use for alignment-based metrics")
 parser.add_argument("--remove_sub_score_mean", action="store_false", help="Whether to not score the mean of the scores for mutated sequences")
@@ -52,7 +53,7 @@ parser.add_argument("--use_evmutation", action="store_true", help="Whether to us
 parser.add_argument("--use_esm_msa", action="store_true", help="Whether to use ESM-MSA")
 parser.add_argument("--skip_FID", action="store_true", help="Whether to not calculate FID")
 parser.add_argument("--model_params", type=str, help="Model params to use for EVmutation")
-parser.add_argument("--orig_seq", required=True, type=str, help="Original sequence to use for Tranception or EVmutation")
+parser.add_argument("--orig_seq", required=False, type=str, help="Original sequence to use for Tranception or EVmutation")
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
 parser.add_argument('--binder_sequence', type=str, required=False, help='Binder sequence to use for AlphaFold2 complex prediction (if not specified, will predict monomeric structure with ESMFold)')
 args = parser.parse_args()
@@ -66,13 +67,12 @@ if args.use_evmutation:
 
 # Check that the required directories exist
 pdb_dir = os.path.abspath(args.pdb_dir) if args.score_existing_structure else None
-reference_pdb = os.path.abspath(args.reference_pdb)
+reference_pdb = os.path.abspath(args.reference_pdb) if args.reference_pdb else None
 reference_dir = os.path.abspath(args.reference_dir)
 target_dir = os.path.abspath(args.target_dir)
 msa_weights_dir = os.path.abspath(args.msa_weights_dir) if args.msa_weights_dir else None
 
 if args.score_existing_structure: assert os.path.exists(pdb_dir), f"PDB directory {pdb_dir} does not exist" 
-assert os.path.isfile(reference_pdb), f"Reference pdb file {reference_pdb} does not exist"
 assert os.path.exists(reference_dir), f"Reference directory {reference_dir} does not exist"
 assert os.path.exists(target_dir), f"Target directory {target_dir} does not exist"
 # assert os.path.exists(msa_weights_dir), f"MSA weights directory {msa_weights_dir} does not exist"
@@ -113,7 +113,7 @@ with tempfile.TemporaryDirectory() as output_dir:
 
   # Reference sequences
   # concatenate reference sequences
-  n = 400  # default value for quick analysis; replace with the number of sequences you want
+  n = 500  # default value for quick analysis; replace with the number of sequences you want
   sequences = []
 
   for idf, reference_fasta in enumerate(reference_files):
@@ -122,14 +122,26 @@ with tempfile.TemporaryDirectory() as output_dir:
 
     # Parse once for raw sequences
     parsed = list(zip(*parse_fasta(reference_fasta, return_names=True, clean=None, full_name=True)))
-    raw_lines = [f">{did}{idx}_{name}\n{seq}\n" for idx, (name, seq) in enumerate(parsed)]
+    raw_lines = [
+      f">{did}{idx}_{clean_name}\n{seq}\n" 
+      for idx, (name, seq) in enumerate(parsed)
+      for clean_name in [re.sub(r'\W+', '', name)]
+    ]
 
     # Parse once for cleaned sequences
     parsed_clean = list(zip(*parse_fasta(reference_fasta, return_names=True, clean="unalign")))
-    full_lines = [f">{did}{idx}_{name}\n{seq}\n" for idx, (name, seq) in enumerate(parsed_clean)]
+    full_lines = [
+      f">{did}{idx}_{clean_name}\n{seq}\n" 
+      for idx, (name, seq) in enumerate(parsed_clean)
+      for clean_name in [re.sub(r'\W+', '', name)]
+      ]
 
     # Collect sequences for further processing
-    sequences.extend((f"{did}{idx}_{name}", seq) for idx, (name, seq) in enumerate(parsed_clean))
+    sequences.extend((
+      f"{did}{idx}_{clean_name}", seq) 
+      for idx, (name, seq) in enumerate(parsed_clean)
+      for clean_name in [re.sub(r'\W+', '', name)]
+      )
 
   # Write raw and full reference sequences
   with open(raw_reference_seqs_file, "w") as fh:
@@ -152,6 +164,7 @@ with tempfile.TemporaryDirectory() as output_dir:
       did = chr(65 + idf)
       # generate unique names for each fasta file
       for idx, (name, seq) in enumerate(zip(*parse_fasta(target_fasta, return_names=True, clean="unalign"))):
+        name = re.sub(r'\W+', '', name) # clean name to remove special characters
         name = f"{did}{idx}_{name}"
         print(f">{name}\n{seq}", file=fh)
 
@@ -170,27 +183,31 @@ with tempfile.TemporaryDirectory() as output_dir:
                                 gap_extend=sub_gap_extend,)
   print(f"############ ALIGNMENT-BASED METRICS DONE! ({time.time() - alignment_time}s) ############")
   
-  structure_time = time.time()
-  if args.score_existing_structure:
-    # Structure metrics
-    # ESM-IF, ProteinMPNN, MIF-ST, AlphaFold2 pLDDT, TM-score
-    st_metrics.TM_score(pdb_files, reference_pdb, results)
-    st_metrics.ESM_IF(pdb_files, results)
-    st_metrics.ProteinMPNN(pdb_files, results)
-    st_metrics.MIF_ST(pdb_files, results, device)
-    st_metrics.AlphaFold2_pLDDT(pdb_files, results)
-  else:
-    if args.binder_sequence:
-      AF_target = os.path.dirname(target_seqs_file)
-      AF_binder = args.binder_sequence
-      AF_reference = reference_pdb
-      alphafold.predict_AFstructure(AF_target, AF_reference, binder_sequence=AF_binder, save_dir=None, num_recycles=3, keep_pdb=False, 
-                        verbose=0, results=results)
+  if args.reference_pdb:
+    assert os.path.isfile(reference_pdb), f"Reference pdb file {reference_pdb} does not exist"
+    structure_time = time.time()
+    if args.score_existing_structure:
+      # Structure metrics
+      # ESM-IF, ProteinMPNN, MIF-ST, AlphaFold2 pLDDT, TM-score
+      st_metrics.TM_score(pdb_files, reference_pdb, results)
+      st_metrics.ESM_IF(pdb_files, results)
+      st_metrics.ProteinMPNN(pdb_files, results)
+      st_metrics.MIF_ST(pdb_files, results, device)
+      st_metrics.AlphaFold2_pLDDT(pdb_files, results)
     else:
-      esm_target = os.path.dirname(target_seqs_file)
-      esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
-                        verbose=0, collect_output=True, results=results)
-  print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
+      if args.binder_sequence:
+        AF_target = os.path.dirname(target_seqs_file)
+        AF_binder = args.binder_sequence
+        AF_reference = reference_pdb
+        alphafold.predict_AFstructure(AF_target, AF_reference, binder_sequence=AF_binder, save_dir=None, num_recycles=3, keep_pdb=False, 
+                          verbose=0, results=results)
+      else:
+        esm_target = os.path.dirname(target_seqs_file)
+        esmfold.predict_structure(esm_target, reference_pdb, save_dir=None, copies=1, num_recycles=3, keep_pdb=False, 
+                          verbose=0, collect_output=True, results=results)
+    print(f"############ STRUCTURE METRICS DONE! ({time.time() - structure_time}s) ############")
+  else:
+      print("No reference structure provided, skipping structure-based metrics...")
 
   if args.use_evmutation:
     ab_metrics.EVmutation(target_files=[target_seqs_file], orig_seq=args.orig_seq.upper(), results=results, model_params=args.model_params)
@@ -206,7 +223,7 @@ with tempfile.TemporaryDirectory() as output_dir:
 
   single_time = time.time()
   ss_metrics.CARP_640m_logp(target_seqs_file, results, device)
-  ss_metrics.ESM_1v(target_seqs_file, results, device, orig_seq=args.orig_seq.upper()) # ProteinGym ESM-1v model
+  # ss_metrics.ESM_1v(target_seqs_file, results, device, orig_seq=args.orig_seq.upper()) # ProteinGym ESM-1v model
   esm1v_pred = ss_metrics.ESM_1v_unmask(target_seqs_file, results, device, return_pred=True)
   ss_metrics.Progen2(target_seqs_file, results, device)
   ss_metrics.ESM_1v_mask6([target_seqs_file], results, device)

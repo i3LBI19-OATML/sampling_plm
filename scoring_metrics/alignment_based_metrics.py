@@ -147,8 +147,14 @@ def substitution_score(target_seqs_file, reference_seqs_file, substitution_matri
         pairwise_target_fasta = output_dir + '/a_sequence.fasta'
         pairwise_query_fasta = output_dir + '/b_sequence.fasta'
         with open(pairwise_target_fasta,'w') as f_target, open(pairwise_query_fasta,'w') as f_query:
-          f_target.write('>' + tn + '\n' + train_seqs[tn] + '\n')
-          f_query.write('>' + qn + '\n' + query_seqs[qn] + '\n')
+          try:
+            f_target.write('>' + tn + '\n' + train_seqs[tn] + '\n')
+            f_query.write('>' + qn + '\n' + query_seqs[qn] + '\n')
+          except KeyError as e:
+            print(f"KeyError: tn={tn} or qn={qn} not found in train_seqs or query_seqs")
+            print(f"Available train_seqs keys: {list(train_seqs.keys())}")
+            print(f"Available query_seqs keys: {list(query_seqs.keys())}")
+            raise e
         # with open(pairwise_query_fasta,'w') as f:
         #   f.write('>' + qn + '\n' + query_seqs[qn] + '\n')
         needle_cline = NeedleCommandline(asequence=pairwise_target_fasta, bsequence=pairwise_query_fasta, gapopen=str(gap_open), gapextend=str(gap_extend), datafile=substitution_matrix_file, aformat='fasta', outfile=pairwise_result_file)
