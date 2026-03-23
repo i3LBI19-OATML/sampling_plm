@@ -39,6 +39,7 @@ parser.add_argument('--evolution_cycles', type=int, required=True, help='Number 
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
 parser.add_argument('--save_df', action='store_true', help='Whether to save the dataframe')
 parser.add_argument('--verbose', action='store_true', help='Whether to print verbose output')
+parser.add_argument('--conserved_positions', nargs='+', type=int, help='List of conserved positions to exclude from mutation (1-indexed)')
 args = parser.parse_args()
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
@@ -117,7 +118,9 @@ while len(generated_sequence) < sequence_num:
             print("=========================================")
 
         if args.sampling_method == 'mcts':
-            mutation, past_key_values = MCTS.UCT_search(seq, max_length=args.max_length, extra=1, tokenizer=tokenizer, AA_vocab=AA_vocab, Tmodel=model, past_key_values=past_key_values, filter=args.filter, ev_model=ev_model, intermediate_sampling_threshold=args.intermediate_threshold, model_type=model_name)
+            mutation, past_key_values = MCTS.UCT_search(seq, max_length=args.max_length, extra=1, tokenizer=tokenizer, AA_vocab=AA_vocab, Tmodel=model, past_key_values=past_key_values, 
+                                                        filter=args.filter, ev_model=ev_model, intermediate_sampling_threshold=args.intermediate_threshold, model_type=model_name, 
+                                                        exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
             sampling_strat = args.sampling_method
             sampling_threshold = args.max_length
         else:
@@ -132,7 +135,9 @@ while len(generated_sequence) < sequence_num:
                                                                                         tokenizer=tokenizer,
                                                                                         with_heatmap=args.with_heatmap,
                                                                                         past_key_values=past_key_values,
-                                                                                        model_type=model_name)
+                                                                                        model_type=model_name,
+                                                                                        exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None
+                                                                                        )
 
             # Save heatmap
             if args.with_heatmap and args.save_scores:
@@ -154,7 +159,9 @@ while len(generated_sequence) < sequence_num:
             if sampling_strat == 'top_k':
                 mutation = top_k_sampling(scores, k=int(sampling_threshold), sampler=final_sampler)
             elif sampling_strat == 'beam_search':
-                mutation, past_key_values = beam_search(scores, beam_width=int(sampling_threshold), max_length=args.max_length, tokenizer=tokenizer, sampler=final_sampler, Tmodel=model, past_key_values=past_key_values, filter=args.filter, ev_model=ev_model, IST=args.intermediate_threshold, model_type=model_name)
+                mutation, past_key_values = beam_search(scores, beam_width=int(sampling_threshold), max_length=args.max_length, tokenizer=tokenizer, 
+                                                        sampler=final_sampler, Tmodel=model, past_key_values=past_key_values, filter=args.filter, ev_model=ev_model, 
+                                                        IST=args.intermediate_threshold, model_type=model_name, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
             elif sampling_strat == 'top_p':
                 assert float(sampling_threshold) <= 1.0 and float(sampling_threshold) > 0, "Top-p sampling threshold must be between 0 and 1"
                 mutation = top_p_sampling(scores, p=float(sampling_threshold), sampler=final_sampler)

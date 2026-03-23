@@ -47,6 +47,7 @@ parser.add_argument('--evolution_cycles', type=int, required=True, help='Number 
 parser.add_argument('--output_name', type=str, required=True, help='Output file name (Just name with no extension!)')
 parser.add_argument('--save_df', action='store_true', help='Whether to save the dataframe')
 parser.add_argument('--verbose', action='store_true', help='Verbose mode')
+parser.add_argument('--conserved_positions', type=int, nargs='+', help='List of conserved positions to exclude from mutation (1-indexed)')
 args = parser.parse_args()
 
 AA_vocab = "ACDEFGHIKLMNPQRSTVWY"
@@ -181,7 +182,9 @@ while len(generated_sequence) < sequence_num:
                                                                                             tokenizer=tokenizer,
                                                                                             with_heatmap=args.with_heatmap,
                                                                                             past_key_values=past_key_values,
-                                                                                            model_type=model_name,)
+                                                                                            model_type=model_name,
+                                                                                            exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None
+                                                                                            )
 
                 # 2. Define intermediate sampling threshold
                 final_sampler = temperature_sampler(args.temperature)
@@ -198,7 +201,7 @@ while len(generated_sequence) < sequence_num:
                 # 2. Sample from extra mutations
                 if args.use_qff:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     if args.proteinbert:
                         extra_mutants = app.predict_proteinBERT(model=proteinbert_model, DMS=all_extra_mutants,input_encoder=input_encoder, top_n=intermediate_sampling_threshold, batch_size=128)
                     if args.evmutation:
@@ -206,7 +209,7 @@ while len(generated_sequence) < sequence_num:
                 
                 if args.use_hpf:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     trimmed = app.trim_DMS(DMS_data=all_extra_mutants, sampled_mutants=mutation, mutation_rounds=mutation_count)
                     # _, scored_trimmed, trimmed, past_key_values = app.score_multi_mutations(seq,extra_mutants=all_extra_mutants,mutation_range_start=mutation_start, mutation_range_end=mutation_end, 
                     #                                         scoring_mirror=args.use_scoring_mirror, batch_size_inference=args.batch, 
@@ -217,7 +220,7 @@ while len(generated_sequence) < sequence_num:
 
                 if args.use_rsf:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     ev_scored = app.predict_evmutation(DMS=all_extra_mutants, top_n=len(all_extra_mutants), ev_model=ev_model, return_evscore=True)
                     extra_mutants = app.stratified_filtering(ev_scored, threshold=intermediate_sampling_threshold, column_name='EVmutation')
 
@@ -258,7 +261,7 @@ while len(generated_sequence) < sequence_num:
                 # 2. Sample from extra mutations
                 if args.use_qff:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     if args.proteinbert:
                         extra_mutants = app.predict_proteinBERT(model=proteinbert_model, DMS=all_extra_mutants,input_encoder=input_encoder, top_n=intermediate_sampling_threshold, batch_size=128)
                     if args.evmutation:
@@ -266,7 +269,7 @@ while len(generated_sequence) < sequence_num:
                 
                 if args.use_hpf:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     trimmed = app.trim_DMS(DMS_data=all_extra_mutants, sampled_mutants=mutation, mutation_rounds=mutation_count)
                     # _, scored_trimmed, trimmed, past_key_values = app.score_multi_mutations(seq,extra_mutants=all_extra_mutants,mutation_range_start=mutation_start, mutation_range_end=mutation_end, 
                     #                                         scoring_mirror=args.use_scoring_mirror, batch_size_inference=args.batch, 
@@ -277,7 +280,7 @@ while len(generated_sequence) < sequence_num:
 
                 if args.use_rsf:
                     mutation = top_k_sampling(last_mutation_round_DMS, k=int(100), sampler=final_sampler, multi=True)
-                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation)
+                    all_extra_mutants = app.apply_gen_1extra(DMS=mutation, exclude_positions=args.conserved_positions if hasattr(args, 'conserved_positions') else None)
                     ev_scored = app.predict_evmutation(DMS=all_extra_mutants, top_n=len(all_extra_mutants), ev_model=ev_model, return_evscore=True)
                     extra_mutants = app.stratified_filtering(ev_scored, threshold=intermediate_sampling_threshold, column_name='EVmutation')
 

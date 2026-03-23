@@ -32,14 +32,41 @@ tokenizer = PreTrainedTokenizerFast(tokenizer_file=os.path.join(os.path.dirname(
                                                 mask_token="[MASK]"
                                             )
 
-def create_all_single_mutants(sequence, AA_vocab=AA_vocab, mutation_range_start=None, mutation_range_end=None):
+# Without exclusion
+# def create_all_single_mutants(sequence, AA_vocab=AA_vocab, mutation_range_start=None, mutation_range_end=None):
+#     sequence_list = list(sequence)
+#     if mutation_range_start is None: mutation_range_start = 1
+#     if mutation_range_end is None: mutation_range_end = len(sequence)
+#     positions = range(mutation_range_start-1, mutation_range_end)
+#     aas = AA_vocab
+#     combos = itertools.product(positions, aas)
+#     all_single_mutants = [{'mutant': f"{sequence_list[i]}{i+1}{aa}", 'mutated_sequence': ''.join([aa if j == i else sequence_list[j] for j in range(len(sequence_list))])} for i, aa in combos if sequence_list[i] != aa]
+#     return pd.DataFrame(all_single_mutants)
+
+def create_all_single_mutants(sequence,AA_vocab,mutation_range_start=None,mutation_range_end=None,exclude_positions:list=None):
     sequence_list = list(sequence)
     if mutation_range_start is None: mutation_range_start = 1
     if mutation_range_end is None: mutation_range_end = len(sequence)
-    positions = range(mutation_range_start-1, mutation_range_end)
-    aas = AA_vocab
-    combos = itertools.product(positions, aas)
-    all_single_mutants = [{'mutant': f"{sequence_list[i]}{i+1}{aa}", 'mutated_sequence': ''.join([aa if j == i else sequence_list[j] for j in range(len(sequence_list))])} for i, aa in combos if sequence_list[i] != aa]
+
+    exclude_positions = set(exclude_positions or [])
+
+    positions = [
+        i for i in range(mutation_range_start - 1, mutation_range_end)
+        if (i + 1) not in exclude_positions
+    ]
+
+    all_single_mutants = [
+        {
+            "mutant": f"{sequence_list[i]}{i+1}{aa}",
+            "mutated_sequence": "".join(
+                aa if j == i else sequence_list[j]
+                for j in range(len(sequence_list))
+            ),
+        }
+        for i, aa in itertools.product(positions, AA_vocab)
+        if sequence_list[i] != aa
+    ]
+
     return pd.DataFrame(all_single_mutants)
 
 def extend_sequence_by_n(sequence, n: int, reference_vocab, output_sequence=True):
@@ -190,7 +217,7 @@ def get_mutated_protein(sequence,mutant):
     mutated_sequence[position-1]=to_AA
   return ''.join(mutated_sequence)
 
-def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=True, past_key_values=None, model_type='Tranception'):
+def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_range_start=None,mutation_range_end=None,scoring_mirror=False,batch_size_inference=20,max_number_positions_per_heatmap=50,num_workers=0,AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=True, past_key_values=None, model_type='Tranception', exclude_positions=None):
   if mutation_range_start is None: mutation_range_start=1
   if mutation_range_end is None: mutation_range_end=len(sequence)
   assert len(sequence) > 0, "no sequence entered"
@@ -202,7 +229,7 @@ def score_and_create_matrix_all_singles(sequence, Tranception_model, mutation_ra
   else:
     print("Inference will take place on CPU")
   model.config.tokenizer = tokenizer
-  all_single_mutants = create_all_single_mutants(sequence,AA_vocab,mutation_range_start,mutation_range_end)
+  all_single_mutants = create_all_single_mutants(sequence,AA_vocab,mutation_range_start,mutation_range_end,exclude_positions=exclude_positions)
   # print("Single variants generated")
   if model_type == 'Tranception':
     scores, past_key_values = model.score_mutants(DMS_data=all_single_mutants, 
@@ -425,28 +452,84 @@ def stratified_filtering(DMS, threshold, column_name='EVmutation'):
 def list_of_dicts_to_df(lst):
     return pd.DataFrame(lst)
 
-def generate_1extra_mutation(row, AA_vocab=AA_vocab, mutation_range_start=None, mutation_range_end=None):
+# Without Exclusions
+# def generate_1extra_mutation(row, AA_vocab=AA_vocab, mutation_range_start=None, mutation_range_end=None):
+#     seq = row["mutated_sequence"]
+#     if mutation_range_start is None: mutation_range_start=1
+#     if mutation_range_end is None: mutation_range_end=len(seq)
+#     new_variants = []
+#     for i in range(mutation_range_start-1, mutation_range_end):
+#         for aa in AA_vocab:
+#             if aa != seq[i]:
+#                 new_variant = {
+#                     "mutated_sequence": seq[:i] + aa + seq[i+1:],
+#                     "mutant": row["mutant"] + f":{seq[i]}{i+1}{aa}"
+#                 }
+#                 new_variants.append(new_variant)
+#     return new_variants
+
+def generate_1extra_mutation(
+    row,
+    AA_vocab=AA_vocab,
+    mutation_range_start=None,
+    mutation_range_end=None,
+    exclude_positions=None,
+):
     seq = row["mutated_sequence"]
-    if mutation_range_start is None: mutation_range_start=1
-    if mutation_range_end is None: mutation_range_end=len(seq)
+
+    if mutation_range_start is None:
+        mutation_range_start = 1
+    if mutation_range_end is None:
+        mutation_range_end = len(seq)
+
+    exclude_positions = set(exclude_positions or [])
+
+    positions = [
+        i for i in range(mutation_range_start - 1, mutation_range_end)
+        if (i + 1) not in exclude_positions
+    ]
+
     new_variants = []
-    for i in range(mutation_range_start-1, mutation_range_end):
+
+    for i in positions:
         for aa in AA_vocab:
             if aa != seq[i]:
-                new_variant = {
+                new_variants.append({
                     "mutated_sequence": seq[:i] + aa + seq[i+1:],
                     "mutant": row["mutant"] + f":{seq[i]}{i+1}{aa}"
-                }
-                new_variants.append(new_variant)
+                })
+
     return new_variants
 
-def apply_gen_1extra(DMS):
-  # print(f'Creating 1 extra mutation')
-  data = DMS.apply(generate_1extra_mutation, axis=1)
-  # Apply function to each element of the Series
-  df = data.apply(list_of_dicts_to_df)
-  df
+# def apply_gen_1extra(DMS):
+#   # print(f'Creating 1 extra mutation')
+#   data = DMS.apply(generate_1extra_mutation, axis=1)
+#   # Apply function to each element of the Series
+#   df = data.apply(list_of_dicts_to_df)
+#   df
 
-  # Concatenate resulting DataFrames into a single DataFrame
-  df = pd.concat(df.to_list(), ignore_index=True)
-  return df
+#   # Concatenate resulting DataFrames into a single DataFrame
+#   df = pd.concat(df.to_list(), ignore_index=True)
+#   return df
+
+def apply_gen_1extra(
+    DMS,
+    AA_vocab=AA_vocab,
+    mutation_range_start=None,
+    mutation_range_end=None,
+    exclude_positions=None,
+):
+    data = DMS.apply(
+        lambda row: generate_1extra_mutation(
+            row,
+            AA_vocab=AA_vocab,
+            mutation_range_start=mutation_range_start,
+            mutation_range_end=mutation_range_end,
+            exclude_positions=exclude_positions,
+        ),
+        axis=1,
+    )
+
+    df = data.apply(list_of_dicts_to_df)
+    df = pd.concat(df.to_list(), ignore_index=True)
+    return df

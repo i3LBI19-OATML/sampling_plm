@@ -159,7 +159,7 @@ def random_sampling(scores: pd.DataFrame, sampler = temperature_sampler(temperat
     return scores['mutant'][sampled_score]
 
 
-def beam_search(scores: pd.DataFrame, beam_width: int, max_length:int, tokenizer, Tmodel, score_mirror=False, batch=20, max_pos=50, sampler=temperature_sampler(temperature=1.0), multi=False, past_key_values=None, filter='hpf', ev_model=None, IST=96, model_type='Tranception'):
+def beam_search(scores: pd.DataFrame, beam_width: int, max_length:int, tokenizer, Tmodel, score_mirror=False, batch=20, max_pos=50, sampler=temperature_sampler(temperature=1.0), multi=False, past_key_values=None, filter='hpf', ev_model=None, IST=96, model_type='Tranception', exclude_positions=None):
   length = 1
   while length < max_length:
     # Get top k mutations
@@ -170,13 +170,13 @@ def beam_search(scores: pd.DataFrame, beam_width: int, max_length:int, tokenizer
     # Extend and filter the results
     assert filter in ['hpf', 'qff', 'ams'], "Filter must be one of 'hpf', 'qff', or 'ams'"
     if filter == 'hpf':
-      levels = app.apply_gen_1extra(scores)
+      levels = app.apply_gen_1extra(scores, exclude_positions=exclude_positions)
       # print("Filtering MCTS with HPF")
       trimmed = app.trim_DMS(DMS_data=levels, sampled_mutants=scores, mutation_rounds=length)
       levels = trimmed.sample(n=IST)
 
     if filter == 'qff':
-      levels = app.apply_gen_1extra(scores)
+      levels = app.apply_gen_1extra(scores, exclude_positions=exclude_positions)
       # print("Filtering MCTS with QFF")
       assert ev_model is not None, "ev_model must be provided for QFF filter"
       levels = app.predict_evmutation(DMS=levels, top_n=IST, ev_model=ev_model)

@@ -62,19 +62,21 @@ class UCTNode():
       current = current.parent
     # print("========END OF ITERATION========")
 
-def UCT_search(state, max_length, extra, tokenizer, Tmodel, AA_vocab=AA_vocab, past_key_values=None, filter='hpf', ev_model=None, intermediate_sampling_threshold=96, model_type='Tranception'):
+def UCT_search(state, max_length, extra, tokenizer, Tmodel, AA_vocab=AA_vocab, past_key_values=None, filter='hpf', ev_model=None, intermediate_sampling_threshold=96, model_type='Tranception', exclude_positions=None):
   root = UCTNode(state)
   for _ in range(max_length):
     leaf = root.select_leaf()
-    child_priors, value_estimate, past_key_values = Evaluate(leaf.state, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=past_key_values, filter=filter, ev_model=ev_model, IST=intermediate_sampling_threshold, model_type=model_type)
+    child_priors, value_estimate, past_key_values = Evaluate(leaf.state, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=past_key_values, filter=filter, ev_model=ev_model, IST=intermediate_sampling_threshold, model_type=model_type, exclude_positions=exclude_positions)
     leaf.expand(child_priors)
     leaf.backup(value_estimate)
     output = max(root.children.items(), key=lambda item: item[1].number_visits)
   return output[1].move, past_key_values
 
-def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=None, filter='hpf', ev_model=None, IST=96, model_type='Tranception'):
+def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_values=None, filter='hpf', ev_model=None, IST=96, model_type='Tranception', exclude_positions=None):
     # df_seq = pd.DataFrame.from_dict({'mutated_sequence': [seq]})
-    score_heatmap, suggested_mutation, results, _, past_key_values = app.score_and_create_matrix_all_singles(seq, Tmodel, None, None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=False, past_key_values=past_key_values, model_type=model_type)
+    score_heatmap, suggested_mutation, results, _, past_key_values = app.score_and_create_matrix_all_singles(seq, Tmodel, None, None, scoring_mirror=False, batch_size_inference=20, max_number_positions_per_heatmap=50, 
+                                                                                                              num_workers=8, AA_vocab=AA_vocab, tokenizer=tokenizer, with_heatmap=False, past_key_values=past_key_values, model_type=model_type,
+                                                                                                              exclude_positions=exclude_positions)
     mutation_count = 1
     
     # Get top k mutations
@@ -85,13 +87,13 @@ def Evaluate(seq, extra, tokenizer, AA_vocab, max_length, Tmodel, past_key_value
     assert filter in ['hpf', 'qff', 'ams'], "Filter must be one of 'hpf', 'qff', or 'ams'"
     if filter == 'hpf':
       # print("Filtering MCTS with HPF")
-      extension = app.apply_gen_1extra(results)
+      extension = app.apply_gen_1extra(results,exclude_positions=exclude_positions)
       trimmed = app.trim_DMS(DMS_data=extension, sampled_mutants=results, mutation_rounds=mutation_count)
       extension = trimmed.sample(n=IST)
 
     if filter == 'qff':
       # print("Filtering MCTS with QFF")
-      extension = app.apply_gen_1extra(results)
+      extension = app.apply_gen_1extra(results,exclude_positions=exclude_positions)
       assert ev_model is not None, "ev_model must be provided for QFF filter"
       extension = app.predict_evmutation(DMS=extension, top_n=IST, ev_model=ev_model)
 
